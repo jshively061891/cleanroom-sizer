@@ -74,6 +74,7 @@
                         </select>
                     </div>
                 </div>
+
                 <div id="indoor-options" class="hidden">
                     <label class="block text-sm font-medium">Is the Space Temperature Controlled?</label>
                     <select id="temp-controlled" class="input-field">
@@ -162,6 +163,11 @@
             </form>
             <div id="results" class="mt-6 bg-gray-50 dark:bg-gray-700 p-4 rounded-md"></div>
         </div>
+            <div class="mt-6">
+            <h3 class="text-lg font-semibold">Psychrometric Chart</h3>
+            <canvas id="psychro-chart" class="max-w-full"></canvas>
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </main>
     <footer class="bg-gray-800 text-white p-4 mt-6">
         <div class="container mx-auto text-center">

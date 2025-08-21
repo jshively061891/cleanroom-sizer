@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let roomCount = 1;
     let latestResults = null; // Store latest results for PDF export
 
+
     // Dark mode toggle
     themeToggle.addEventListener('click', () => {
         document.body.classList.toggle('dark');
@@ -215,7 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
         spaceTempInputs.style.display = (environment === 'indoor' && tempControlledSelect.value === 'yes') ? 'block' : 'none';
 
         const selectedOption = locationSelect.options[locationSelect.selectedIndex];
-        if (locationInput.style.display === 'block' && selectedOption && selectedOption.value) {
+        if (locationInput.style.display = 'block' && selectedOption && selectedOption.value) {
             designTempsDisplay.innerHTML = `
                 Summer Design: DB ${selectedOption.dataset.coolingdb}°F, MCWB ${selectedOption.dataset.mcwb}°F<br>
                 Winter Design: DB ${selectedOption.dataset.heatingdb}°F
@@ -575,8 +576,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const heaterBtu = 1.08 * totalMakeupCfm * Math.max((roomTemp - outdoorWinterTemp), 0) + humidLoad;
         let heaterKw = (heaterBtu / 3412) * (1 + safetyFactor);
 
-        // Reheat for dehumid mode (over-cooling to 55°F for moisture removal)
-        const dehumidCoilTemp = 55; // Assumed coil temp for dehumid
+        // Reheat for dehumid mode (over-cooling to 45°F for maximum moisture removal)
+        const dehumidCoilTemp = 45; // Updated coil temp for max dehumid
+        const dehumid_T_C = fToC(dehumidCoilTemp);
+        const dehumid_P_sat = saturationVaporPressure(dehumid_T_C);
+        const dehumid_P_v = dehumid_P_sat; // Assume saturated (100% RH) after coil
+        const dehumid_W = humidityRatio(dehumid_P_v);
+        const h_dehumid_supply = enthalpy(dehumidCoilTemp, dehumid_W);
+        const dehumidCoilLoad = 4.5 * totalCfm * (h_mixed - h_dehumid_supply); // BTU/hr for dehumid mode
         const reheatBtu = 1.08 * totalCfm * (roomTemp - dehumidCoilTemp); // BTU/hr
         const reheatKw = (reheatBtu / 3412) * (1 + safetyFactor); // kW
 
@@ -592,10 +599,15 @@ document.addEventListener('DOMContentLoaded', function() {
             heaterKw = exampleReheatKw; // Ensure heater is large enough
         }
 
-        // Power consumption
-        const totalDemandKw = (totalFfuWatts + totalLightingWatts + totalEquipWatts) / 1000 + acTonnage * 1.2 + heaterKw + humidKw;
-        const amps480 = totalDemandKw * 1000 / (480 * Math.sqrt(3) * 0.85); // 3-phase
-        const amps208 = totalDemandKw * 1000 / (208 * 1 * 0.85); // Single-phase
+       // Power consumption (itemized)
+        const hvacKw = acTonnage * 1.2 + heaterKw + humidKw; // Cooling (1.2 kW/ton), heating, humidification
+        const ffuKw = totalFfuWatts / 1000; // FFU power
+        const lightingKw = totalLightingWatts / 1000; // Lighting power
+        const equipmentKw = totalEquipWatts / 1000; // Equipment power
+        const totalDemandKw = hvacKw + ffuKw + lightingKw + equipmentKw;
+        const amps480 = totalDemandKw * 1000 / (480 * Math.sqrt(3) * 0.85); // 3-phase, 480V, PF 0.85
+        const amps208Single = totalDemandKw * 1000 / (208 * 1 * 0.85); // Single-phase, 208V, PF 0.85
+        const amps208Three = totalDemandKw * 1000 / (208 * Math.sqrt(3) * 0.85); // Three-phase, 208V, PF 0.85
 
         // Validation
         const roomDewPoint = dewPoint(roomTemp, roomRH);
@@ -650,9 +662,14 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <h3 class="text-md font-bold">Power Consumption</h3>
             <div class="text-sm">
-                <p><span class="font-medium">Estimated Demand Load:</span> ${totalDemandKw.toFixed(2)} kW</p>
+                <p><span class="font-medium">HVAC Power (Cooling, Heating, Humidification):</span> ${hvacKw.toFixed(2)} kW</p>
+                <p><span class="font-medium">FFU Power:</span> ${ffuKw.toFixed(2)} kW</p>
+                <p><span class="font-medium">Lighting Power:</span> ${lightingKw.toFixed(2)} kW</p>
+                <p><span class="font-medium">Equipment Power:</span> ${equipmentKw.toFixed(2)} kW</p>
+                <p><span class="font-medium">Total Demand Load:</span> ${totalDemandKw.toFixed(2)} kW</p>
                 <p><span class="font-medium">Amperage at 480V (3-phase, PF 0.85):</span> ${amps480.toFixed(2)} A</p>
-                <p><span class="font-medium">Amperage at 208V (single-phase, PF 0.85):</span> ${amps208.toFixed(2)} A</p>
+                <p><span class="font-medium">Amperage at 208V (single-phase, PF 0.85):</span> ${amps208Single.toFixed(2)} A</p>
+                <p><span class="font-medium">Amperage at 208V (3-phase, PF 0.85):</span> ${amps208Three.toFixed(2)} A</p>
             </div>
             <small class="text-xs">
                 <h3 class="text-sm font-semibold">Assumptions Used in Calculations:</h3>
@@ -666,7 +683,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <li>Fan heat: 2°F rise across fans.</li>
                     <li>Winter outdoor RH: 20% for non-controlled spaces.</li>
                     <li>Humidifier: Steam-based, 970 BTU/lb water vaporization.</li>
-                    <li>Reheat for dehumidification: Assumed 55°F coil temp.</li>
+                    <li>Reheat for dehumidification: Assumed 45°F coil temp for maximum moisture removal with standard equipment, balancing efficiency and icing risk.</li>
                     <li>Power: Cooling 1.2 kW/ton, power factor 0.85 for amperage.</li>
                     <li>Atmospheric pressure: 1013.25 mbar (sea level).</li>
                     <li>Workplane height: 2.5 ft for lighting.</li>
@@ -711,12 +728,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 humidKw,
                 acTonnage,
                 heaterKw,
+                hvacKw,
+                ffuKw,
+                lightingKw,
+                equipmentKw,
                 totalDemandKw,
                 amps480,
-                amps208
+                amps208Single,
+                amps208Three
             },
             roomDetails
         };
+
+        const ctx = document.getElementById('psychro-chart').getContext('2d');
+        new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Mixed Air',
+                    data: [{x: T_mixed, y: W_mixed * 1000}],
+                    backgroundColor: '#2563eb',
+                    pointRadius: 5
+                }, {
+                    label: 'Supply Air',
+                    data: [{x: supplyTemp, y: supply_W * 1000}],
+                    backgroundColor: '#dc2626',
+                    pointRadius: 5
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Dry Bulb Temp (°F)' }, min: 30, max: 100 },
+                    y: { title: { display: true, text: 'Humidity Ratio (gr/lb)' }, min: 0, max: 20 }
+                }
+            }
+        });
+
+
     });
 
     exportPdfButton.addEventListener('click', function() {
@@ -763,11 +811,11 @@ document.addEventListener('DOMContentLoaded', function() {
             'Occupant load: 250 BTU/hr sensible, 200 BTU/hr latent per person.',
             'Non-single-pass makeup air: 10% of room CFM.',
             'Ventilation: 10 CFM per person for fresh air, added as minimum makeup.',
-            'Coil supply: 10°F below room temp, same RH.',
+            'Coil supply: 10°F below room temp, same RH for normal cooling.',
             'Fan heat: 2°F rise across fans.',
             'Winter outdoor RH: 20% for non-controlled spaces.',
             'Humidifier: Steam-based, 970 BTU/lb water vaporization.',
-            'Reheat for dehumidification: Assumed 55°F coil temp.',
+            'Reheat for dehumidification: Assumed 45°F coil temp for maximum moisture removal with standard equipment, balancing efficiency and icing risk.',
             'Power: Cooling 1.2 kW/ton, power factor 0.85 for amperage.',
             'Atmospheric pressure: 1013.25 mbar (sea level).',
             'Workplane height: 2.5 ft for lighting.',
@@ -836,9 +884,14 @@ document.addEventListener('DOMContentLoaded', function() {
         doc.setFont('helvetica', 'bold');
         doc.text('Power Consumption', 20, y); y += 6;
         doc.setFont('helvetica', 'normal');
-        doc.text(`Estimated Demand Load: ${totalHvac.totalDemandKw.toFixed(2)} kW`, 20, y); y += 6;
+        doc.text(`HVAC Power (Cooling, Heating, Humidification): ${totalHvac.hvacKw.toFixed(2)} kW`, 20, y); y += 6;
+        doc.text(`FFU Power: ${totalHvac.ffuKw.toFixed(2)} kW`, 20, y); y += 6;
+        doc.text(`Lighting Power: ${totalHvac.lightingKw.toFixed(2)} kW`, 20, y); y += 6;
+        doc.text(`Equipment Power: ${totalHvac.equipmentKw.toFixed(2)} kW`, 20, y); y += 6;
+        doc.text(`Total Demand Load: ${totalHvac.totalDemandKw.toFixed(2)} kW`, 20, y); y += 6;
         doc.text(`Amperage at 480V (3-phase, PF 0.85): ${totalHvac.amps480.toFixed(2)} A`, 20, y); y += 6;
-        doc.text(`Amperage at 208V (single-phase, PF 0.85): ${totalHvac.amps208.toFixed(2)} A`, 20, y); y += 6;
+        doc.text(`Amperage at 208V (single-phase, PF 0.85): ${totalHvac.amps208Single.toFixed(2)} A`, 20, y); y += 6;
+        doc.text(`Amperage at 208V (3-phase, PF 0.85): ${totalHvac.amps208Three.toFixed(2)} A`, 20, y); y += 6;
 
         // Page 2: Room-by-Room Details
         doc.addPage();
