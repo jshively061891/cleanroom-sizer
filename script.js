@@ -224,9 +224,9 @@ document.addEventListener('DOMContentLoaded', function() {
         spaceTempInputs.style.display = (environment === 'indoor' && tempControlledSelect.value === 'yes') ? 'block' : 'none';
 
         if (environment === 'indoor' || environment === 'outdoor') {
-            makeupAirSection.classList.remove('hidden');
+            makeupAirSection.style.display = 'block';
         } else {
-            makeupAirSection.classList.add('hidden');
+            makeupAirSection.style.display = 'none';
         }
         
         locationSelect.dispatchEvent(new Event('change'));
