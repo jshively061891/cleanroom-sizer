@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const designTempsDisplay = document.getElementById('design-temps-display');
     const themeToggle = document.getElementById('theme-toggle');
     let roomCount = 1;
-    let latestResults = null; // Store latest results for PDF export
+    let latestResults = null;
 
 
     // Dark mode toggle
@@ -24,6 +24,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (localStorage.getItem('theme') === 'dark') {
         document.body.classList.add('dark');
     }
+
+    document.getElementById('makeup-same-surround').addEventListener('change', function() {
+        const useCustomInputs = this.value === 'no';
+        document.getElementById('makeup-custom-inputs').style.display = useCustomInputs ? 'block' : 'none';
+    });
+
 
     function addEquipmentListener(roomDiv) {
         const addEquipButton = roomDiv.querySelector('.add-equipment');
@@ -37,13 +43,13 @@ document.addEventListener('DOMContentLoaded', function() {
             equipDiv.innerHTML = `
                 <div>
                     <label class="block text-sm font-medium">Equipment Name:</label>
-                    <input type="text" class="equip-name input-field">
+                    <input type="text" class="equip-name input-field" placeholder="e.g., Centrifuge">
                 </div>
                 <div>
                     <label class="block text-sm font-medium">Watts:</label>
                     <input type="number" class="equip-watts input-field" required>
                 </div>
-                <button type="button" class="remove-equipment btn btn-secondary mt-2">Remove Equipment</button>
+                <button type="button" class="remove-equipment btn btn-secondary mt-2 col-span-full">Remove Equipment</button>
             `;
             equipContainer.appendChild(equipDiv);
 
@@ -115,15 +121,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label class="block text-sm font-medium">ISO Class:</label>
                     <select class="iso-class input-field">
                         <option value="">-</option>
-                        <option value="5">ISO 5 (200-450 ACH)</option>
-                        <option value="6">ISO 6 (65-150 ACH)</option>
-                        <option value="7">ISO 7 (30-65 ACH)</option>
-                        <option value="8">ISO 8 (10-30 ACH)</option>
+                        <option value="5">ISO 5 (Class 100)</option>
+                        <option value="6">ISO 6 (Class 1,000)</option>
+                        <option value="7">ISO 7 (Class 10,000)</option>
+                        <option value="8">ISO 8 (Class 100,000)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium">Custom ACH:</label>
-                    <input type="number" class="custom-ach input-field" required>
+                    <input type="number" class="custom-ach input-field" placeholder="Auto-fills from ISO" required>
                 </div>
                 <div>
                     <label class="block text-sm font-medium">Single Pass Air:</label>
@@ -148,7 +154,6 @@ document.addEventListener('DOMContentLoaded', function() {
     addEquipmentListener(document.querySelector('.room'));
     updateAch(document.querySelector('.room'));
 
-    // U.S. cities list with ASHRAE extreme design data (0.4% cooling DB/MCWB, 99.6% heating DB)
     const cities = [
         {city: "Anchorage", state: "AK", country: "USA", coolingDB: 77, mcwb: 62, heatingDB: -26},
         {city: "Auburn-Opelika", state: "AL", country: "USA", coolingDB: 95, mcwb: 75, heatingDB: 17},
@@ -198,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function() {
     cities.forEach(city => {
         const option = document.createElement('option');
         option.value = city.city;
-        option.text = `${city.city}, ${city.state}, ${city.country}`;
+        option.text = `${city.city}, ${city.state}`;
         option.dataset.coolingdb = city.coolingDB;
         option.dataset.mcwb = city.mcwb;
         option.dataset.heatingdb = city.heatingDB;
@@ -210,68 +215,43 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateInputs() {
         const environment = environmentSelect.value;
+        const makeupAirSection = document.getElementById('makeup-air-section');
+
         indoorOptions.style.display = environment === 'indoor' ? 'block' : 'none';
-        locationInput.style.display = environment === 'outdoor' || (environment === 'indoor' && tempControlledSelect.value === 'no') ? 'block' : 'none';
-        customTemps.style.display = environment === 'outdoor' || (environment === 'indoor' && tempControlledSelect.value === 'no') ? 'block' : 'none';
+        const showLocation = environment === 'outdoor' || (environment === 'indoor' && tempControlledSelect.value === 'no');
+        locationInput.style.display = showLocation ? 'block' : 'none';
+        customTemps.style.display = showLocation ? 'block' : 'none';
         spaceTempInputs.style.display = (environment === 'indoor' && tempControlledSelect.value === 'yes') ? 'block' : 'none';
 
-        const selectedOption = locationSelect.options[locationSelect.selectedIndex];
-        if (locationInput.style.display = 'block' && selectedOption && selectedOption.value) {
-            designTempsDisplay.innerHTML = `
-                Summer Design: DB ${selectedOption.dataset.coolingdb}°F, MCWB ${selectedOption.dataset.mcwb}°F<br>
-                Winter Design: DB ${selectedOption.dataset.heatingdb}°F
-            `;
-            document.getElementById('custom-cooling-db').value = selectedOption.dataset.coolingdb;
-            document.getElementById('custom-mcwb').value = selectedOption.dataset.mcwb;
-            document.getElementById('custom-heating-db').value = selectedOption.dataset.heatingdb;
+        if (environment === 'indoor' || environment === 'outdoor') {
+            makeupAirSection.classList.remove('hidden');
         } else {
-            designTempsDisplay.innerHTML = '';
-            document.getElementById('custom-cooling-db').value = '';
-            document.getElementById('custom-mcwb').value = '';
-            document.getElementById('custom-heating-db').value = '';
+            makeupAirSection.classList.add('hidden');
         }
+        
+        locationSelect.dispatchEvent(new Event('change'));
     }
 
     locationSelect.addEventListener('change', function() {
         const selectedOption = this.options[this.selectedIndex];
-        if (selectedOption.value) {
+        if (selectedOption && selectedOption.value) {
             designTempsDisplay.innerHTML = `
-                Summer Design: DB ${selectedOption.dataset.coolingdb}°F, MCWB ${selectedOption.dataset.mcwb}°F<br>
-                Winter Design: DB ${selectedOption.dataset.heatingdb}°F
+                <b>ASHRAE Data:</b> Summer DB ${selectedOption.dataset.coolingdb}°F / MCWB ${selectedOption.dataset.mcwb}°F | Winter DB ${selectedOption.dataset.heatingdb}°F
             `;
             document.getElementById('custom-cooling-db').value = selectedOption.dataset.coolingdb;
             document.getElementById('custom-mcwb').value = selectedOption.dataset.mcwb;
             document.getElementById('custom-heating-db').value = selectedOption.dataset.heatingdb;
         } else {
             designTempsDisplay.innerHTML = '';
-            document.getElementById('custom-cooling-db').value = '';
-            document.getElementById('custom-mcwb').value = '';
-            document.getElementById('custom-heating-db').value = '';
         }
     });
 
     // Psychrometric functions
-    function fToC(T_F) {
-        return (T_F - 32) / 1.8;
-    }
-
-    function saturationVaporPressure(T_C) {
-        return 6.112 * Math.exp((17.67 * T_C) / (T_C + 243.5));
-    }
-
-    function vaporPressure(RH, P_sat) {
-        return (RH / 100) * P_sat;
-    }
-
-    function humidityRatio(P_v) {
-        const P_atm = 1013.25;
-        return 0.62198 * P_v / (P_atm - P_v);
-    }
-
-    function enthalpy(T_F, W) {
-        return 0.24 * T_F + W * (1061 + 0.444 * T_F);
-    }
-
+    function fToC(T_F) { return (T_F - 32) / 1.8; }
+    function saturationVaporPressure(T_C) { return 6.112 * Math.exp((17.67 * T_C) / (T_C + 243.5)); }
+    function vaporPressure(RH_decimal, P_sat) { return RH_decimal * P_sat; }
+    function humidityRatio(P_v) { const P_atm = 1013.25; return 0.62198 * P_v / (P_atm - P_v); }
+    function enthalpy(T_F, W) { return 0.24 * T_F + W * (1061 + 0.444 * T_F); }
     function humidityRatioFromDBWB(T_db_F, T_wb_F) {
         const T_db_C = fToC(T_db_F);
         const T_wb_C = fToC(T_wb_F);
@@ -281,21 +261,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const P_v = P_sat_wb - P_atm * (T_db_C - T_wb_C) * psych_constant * (1 + 0.00115 * T_wb_C);
         return 0.62198 * P_v / (P_atm - P_v);
     }
-
-    function dewPoint(T_F, RH) {
+    function dewPoint(T_F, RH_decimal) {
         const T_C = fToC(T_F);
         const P_sat = saturationVaporPressure(T_C);
-        const P_v = vaporPressure(RH, P_sat);
+        const P_v = vaporPressure(RH_decimal, P_sat);
         const Td_C = (243.5 * Math.log(P_v / 6.112)) / (17.67 - Math.log(P_v / 6.112));
-        return Td_C * 1.8 + 32; // °F
+        return Td_C * 1.8 + 32;
     }
 
     document.getElementById('hvac-form').addEventListener('submit', function(event) {
         event.preventDefault();
-        exportPdfButton.classList.remove('hidden'); // Show export button after calculation
-
+        
+        // --- 1. GATHER AND VALIDATE INPUTS ---
         const roomTemp = parseFloat(document.getElementById('room-temp').value);
-        const roomRH = parseFloat(document.getElementById('room-rh').value);
+        const roomRH = parseFloat(document.getElementById('room-rh').value) / 100;
         const totalPeople = parseInt(document.getElementById('people').value);
         const rWall = parseFloat(document.getElementById('r-wall').value);
         const rRoof = parseFloat(document.getElementById('r-roof').value);
@@ -303,174 +282,99 @@ document.addEventListener('DOMContentLoaded', function() {
         const ffuWattage = parseFloat(document.getElementById('ffu-wattage').value);
         const safetyFactor = parseFloat(document.getElementById('safety-factor').value) / 100;
         const environment = environmentSelect.value;
+        let validationMessages = [];
 
-        let outdoorTemp, outdoorRH, outdoorWinterTemp, useWB = false, outdoorW;
-        let environmentDetails = '';
-        if (environment === '') {
-            document.getElementById('results').innerHTML = 'Error: Please select an environment (Indoor or Outdoor).';
+        if (isNaN(roomTemp) || isNaN(roomRH) || isNaN(totalPeople) || isNaN(rWall) || isNaN(rRoof) || isNaN(rFloor) || isNaN(ffuWattage) || isNaN(safetyFactor)) {
+            document.getElementById('results').innerHTML = '<p class="text-red-500">Error: Please fill all required fields with valid numbers.</p>';
             return;
         }
+        if (environment === '') {
+            document.getElementById('results').innerHTML = '<p class="text-red-500">Error: Please select an environment.</p>';
+            return;
+        }
+
+        // --- 2. CALCULATE AIR PROPERTIES ---
+        const room_W = humidityRatio(vaporPressure(roomRH, saturationVaporPressure(fToC(roomTemp))));
+        const h_room = enthalpy(roomTemp, room_W);
+        const roomDewPoint = dewPoint(roomTemp, roomRH);
+        const dehumidCoilTemp = roomDewPoint - 2.5;
+
+        if (dehumidCoilTemp < 40 || dehumidCoilTemp > 55) {
+            validationMessages.push(`Warning: Calculated dehumidification coil temp (${dehumidCoilTemp.toFixed(1)}°F) is outside the typical safe range (40-55°F). This may risk coil freezing. Please consult an engineer.`);
+        }
+        
+        let outdoorTemp, outdoorRH, outdoorWinterTemp, useWB = false, outdoorW, mcwb, environmentDetails = '';
+        
         if (environment === 'indoor') {
-            const controlled = tempControlledSelect.value;
-            if (controlled === 'yes') {
+            if (tempControlledSelect.value === 'yes') {
                 outdoorTemp = parseFloat(document.getElementById('space-temp').value);
                 outdoorRH = parseFloat(document.getElementById('space-rh').value);
                 outdoorWinterTemp = outdoorTemp;
-                environmentDetails = `Indoor, Temp-Controlled, Space Temp: ${outdoorTemp}°F, Space RH: ${outdoorRH}%`;
+                environmentDetails = `Indoor, Conditioned Space (${outdoorTemp}°F, ${outdoorRH}%)`;
             } else {
                 const selectedLocation = locationSelect.options[locationSelect.selectedIndex];
-                if (selectedLocation.value === '') {
-                    document.getElementById('results').innerHTML = 'Error: Please select a location.';
-                    return;
-                }
-                outdoorTemp = parseFloat(document.getElementById('custom-cooling-db').value) || parseFloat(selectedLocation.dataset.coolingdb);
-                const mcwb = parseFloat(document.getElementById('custom-mcwb').value) || parseFloat(selectedLocation.dataset.mcwb);
-                outdoorW = humidityRatioFromDBWB(outdoorTemp, mcwb);
+                if (!selectedLocation.value) { document.getElementById('results').innerHTML = '<p class="text-red-500">Error: Please select a location for the non-conditioned space.</p>'; return; }
+                outdoorTemp = parseFloat(document.getElementById('custom-cooling-db').value);
+                mcwb = parseFloat(document.getElementById('custom-mcwb').value);
+                outdoorWinterTemp = parseFloat(document.getElementById('custom-heating-db').value);
                 useWB = true;
-                outdoorWinterTemp = parseFloat(document.getElementById('custom-heating-db').value) || parseFloat(selectedLocation.dataset.heatingdb);
-                environmentDetails = `Indoor, Non-Temp-Controlled, Location: ${selectedLocation.text}, Custom Cooling DB: ${outdoorTemp}°F, MCWB: ${mcwb}°F, Heating DB: ${outdoorWinterTemp}°F`;
+                environmentDetails = `Indoor, Non-Conditioned Space (Using ${selectedLocation.text} data)`;
             }
-        } else {
+        } else { // Outdoor
             const selectedLocation = locationSelect.options[locationSelect.selectedIndex];
-            if (selectedLocation.value === '') {
-                document.getElementById('results').innerHTML = 'Error: Please select a location.';
-                return;
-            }
-            outdoorTemp = parseFloat(document.getElementById('custom-cooling-db').value) || parseFloat(selectedLocation.dataset.coolingdb);
-            const mcwb = parseFloat(document.getElementById('custom-mcwb').value) || parseFloat(selectedLocation.dataset.mcwb);
-            outdoorW = humidityRatioFromDBWB(outdoorTemp, mcwb);
+            if (!selectedLocation.value) { document.getElementById('results').innerHTML = '<p class="text-red-500">Error: Please select a location.</p>'; return; }
+            outdoorTemp = parseFloat(document.getElementById('custom-cooling-db').value);
+            mcwb = parseFloat(document.getElementById('custom-mcwb').value);
+            outdoorWinterTemp = parseFloat(document.getElementById('custom-heating-db').value);
             useWB = true;
-            outdoorWinterTemp = parseFloat(document.getElementById('custom-heating-db').value) || parseFloat(selectedLocation.dataset.heatingdb);
-            environmentDetails = `Outdoor, Location: ${selectedLocation.text}, Custom Cooling DB: ${outdoorTemp}°F, MCWB: ${mcwb}°F, Heating DB: ${outdoorWinterTemp}°F`;
+            environmentDetails = `Outdoor (Using ${selectedLocation.text} data)`;
         }
 
-        if (isNaN(roomTemp) || isNaN(roomRH) || roomRH < 0 || roomRH > 100) {
-            document.getElementById('results').innerHTML = 'Error: Invalid room temperature or RH.';
-            return;
-        }
-        if (isNaN(totalPeople) || totalPeople < 0) {
-            document.getElementById('results').innerHTML = 'Error: Invalid number of people.';
-            return;
-        }
-        if (isNaN(rWall) || isNaN(rRoof) || isNaN(rFloor) || rWall <= 0 || rRoof <= 0 || rFloor <= 0) {
-            document.getElementById('results').innerHTML = 'Error: Invalid R-values.';
-            return;
-        }
-        if (isNaN(ffuWattage) || ffuWattage <= 0) {
-            document.getElementById('results').innerHTML = 'Error: Invalid FFU wattage.';
-            return;
-        }
-        if (isNaN(safetyFactor) || safetyFactor < 0 || safetyFactor > 0.5) {
-            document.getElementById('results').innerHTML = 'Error: Invalid safety factor (0-50%).';
-            return;
-        }
-        if (environment === 'indoor' && tempControlledSelect.value === 'yes') {
-            if (isNaN(outdoorTemp) || isNaN(outdoorRH) || outdoorRH < 0 || outdoorRH > 100) {
-                document.getElementById('results').innerHTML = 'Error: Invalid space temperature or RH.';
-                return;
-            }
-        } else {
-            if (isNaN(outdoorTemp) || isNaN(outdoorWinterTemp)) {
-                document.getElementById('results').innerHTML = 'Error: Invalid location or custom temps.';
-                return;
-            }
-        }
-
-        const room_T_C = fToC(roomTemp);
-        const room_P_sat = saturationVaporPressure(room_T_C);
-        const room_P_v = vaporPressure(roomRH, room_P_sat);
-        const room_W = humidityRatio(room_P_v);
-        const h_room = enthalpy(roomTemp, room_W);
-
-        let h_outdoor, winter_W;
         if (useWB) {
-            h_outdoor = enthalpy(outdoorTemp, outdoorW);
-            winter_W = humidityRatioFromDBWB(outdoorWinterTemp, outdoorWinterTemp); // Assume low RH (20%) for winter
-        } else {
-            const outdoor_T_C = fToC(outdoorTemp);
-            const outdoor_P_sat = saturationVaporPressure(outdoor_T_C);
-            const outdoor_P_v = vaporPressure(outdoorRH, outdoor_P_sat);
-            const outdoor_W_local = humidityRatio(outdoor_P_v);
-            h_outdoor = enthalpy(outdoorTemp, outdoor_W_local);
-            const winter_T_C = fToC(outdoorWinterTemp);
-            const winter_P_sat = saturationVaporPressure(winter_T_C);
-            const winter_P_v = vaporPressure(20, winter_P_sat); // Assume 20% RH for winter
-            winter_W = humidityRatio(winter_P_v);
+            outdoorW = humidityRatioFromDBWB(outdoorTemp, mcwb);
         }
 
+        // --- 3. PROCESS ROOM-BY-ROOM DETAILS ---
         const rooms = document.querySelectorAll('.room');
-        let totalCfm = 0;
-        let totalFfUs = 0;
-        let totalLightingWatts = 0;
-        let totalEquipWatts = 0;
-        let totalFfuWatts = 0;
-        let totalMakeupCfm = 0;
-        let totalRecircCfm = 0;
-        let totalEnvelopeLoad = 0;
-        let validationMessages = [];
+        let totalCfm = 0, totalFfUs = 0, totalLightingWatts = 0, totalEquipWatts = 0, totalFfuWatts = 0, totalMakeupCfm = 0, totalRecircCfm = 0, totalEnvelopeLoad = 0;
         let roomDetails = [];
 
-        let resultsHtml = ''; // Declare once at the start
-
-        rooms.forEach((room, index) => {
+        for (const [index, room] of rooms.entries()) {
             const length = parseFloat(room.querySelector('.length').value);
             const width = parseFloat(room.querySelector('.width').value);
             const height = parseFloat(room.querySelector('.height').value);
-            const customAch = parseFloat(room.querySelector('.custom-ach').value);
-            const singlePass = room.querySelector('.single-pass').value;
             const isoClass = room.querySelector('.iso-class').value;
-
-            if (isNaN(length) || isNaN(width) || isNaN(height) || length <= 0 || width <= 0 || height <= 0) {
-                document.getElementById('results').innerHTML = 'Error: Invalid room dimensions.';
-                return;
+            const customAch = parseFloat(room.querySelector('.custom-ach').value);
+            if (isNaN(length) || isNaN(width) || isNaN(height) || isNaN(customAch) || length <= 0 || width <= 0 || height <= 0 || customAch <= 0 || !isoClass) {
+                 document.getElementById('results').innerHTML = `<p class="text-red-500">Error: Room ${index + 1} has invalid dimensions, ISO class, or ACH.</p>`;
+                 return;
             }
-            if (isNaN(customAch) || customAch <= 0) {
-                document.getElementById('results').innerHTML = `Error in Room ${index + 1}: Invalid ACH.`;
-                return;
-            }
-            if (isoClass === '') {
-                document.getElementById('results').innerHTML = `Error in Room ${index + 1}: Please select an ISO Class.`;
-                return;
-            }
-
+            
+            const singlePass = room.querySelector('.single-pass').value;
             const volume = length * width * height;
-            const cfm = (volume * customAch) / 60 * (1 + safetyFactor); // Apply safety factor to CFM
+            const cfm = (volume * customAch) / 60 * (1 + safetyFactor);
             totalCfm += cfm;
 
             const cfmPerFFU = 600;
-            const ffus = Math.ceil(cfm / cfmPerFFU); // Round up to ensure whole FFUs
+            const ffus = Math.ceil(cfm / cfmPerFFU);
             totalFfUs += ffus;
-
             const ffuWatts = ffus * ffuWattage;
             totalFfuWatts += ffuWatts;
 
             const area = length * width;
             const workplaneHeight = 2.5;
             const h_rc = height - workplaneHeight;
-            if (h_rc <= 0) {
-                document.getElementById('results').innerHTML = `Error in Room ${index + 1}: Height too low.`;
-                return;
-            }
             const rcr = 5 * h_rc * (length + width) / area;
-
             const cuTable = [1.19, 1.03, 0.89, 0.78, 0.69, 0.62, 0.55, 0.50, 0.46, 0.42, 0.38];
-            const rcrIndex = Math.min(Math.round(rcr), 10);
-            const cu = cuTable[rcrIndex];
-
-            const illuminance = 60;
-            const llf = 0.8;
-            const lumensPerFixture = 5000;
-            const wattsPerFixture = 50;
-
-            const numFixtures = Math.ceil((illuminance * area) / (lumensPerFixture * cu * llf));
-            const lightingWatts = numFixtures * wattsPerFixture;
+            const cu = cuTable[Math.min(Math.round(rcr), 10)];
+            const numFixtures = Math.ceil((60 * area) / (5000 * cu * 0.8));
+            const lightingWatts = numFixtures * 50;
             totalLightingWatts += lightingWatts;
 
             let equipWatts = 0;
             let equipDetails = '';
-            const equipments = room.querySelectorAll('.equipment');
-            equipments.forEach(equip => {
-                const name = equip.querySelector('.equip-name').value.trim() || 'Unnamed Equipment';
+            room.querySelectorAll('.equipment').forEach(equip => {
+                const name = equip.querySelector('.equip-name').value.trim() || 'Unnamed';
                 const watts = parseFloat(equip.querySelector('.equip-watts').value);
                 if (!isNaN(watts) && watts > 0) {
                     equipWatts += watts;
@@ -478,293 +382,307 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             totalEquipWatts += equipWatts;
-
-            // Envelope load for this room (sensible)
-            const wallArea = 2 * (length + width) * height;
-            const roofArea = area;
-            const floorArea = area;
-            const envelopeLoad = (wallArea / rWall + roofArea / rRoof + floorArea / rFloor) * (roomTemp - outdoorTemp); // BTU/hr, positive for cooling
+            
+            const envelopeLoad = ((2 * (length + width) * height) / rWall + (area / rRoof) + (area / rFloor)) * (outdoorTemp - roomTemp);
             totalEnvelopeLoad += envelopeLoad;
 
-            // Makeup for this room
             const roomMakeupCfm = (singlePass === 'yes') ? cfm : cfm * 0.1;
             totalMakeupCfm += roomMakeupCfm;
-            const roomRecircCfm = cfm - roomMakeupCfm;
-            totalRecircCfm += roomRecircCfm;
+            totalRecircCfm += (cfm - roomMakeupCfm);
+            
+            roomDetails.push({ index: index + 1, length, width, height, isoClass, volume, singlePass, cfm, roomMakeupCfm, ffus, ffuWatts, lightingWatts, numFixtures, equipWatts, envelopeLoad, equipDetails });
+        }
 
-            if (customAch > 500) validationMessages.push(`Room ${index + 1}: Extreme ACH (${customAch}); may require oversized fans.`);
-            if (cfm > 10000) validationMessages.push(`Room ${index + 1}: High CFM (${cfm.toFixed(2)}); may require multiple units.`);
-
-            roomDetails.push({
-                index: index + 1,
-                singlePass,
-                cfm,
-                roomMakeupCfm,
-                roomRecircCfm,
-                ffus,
-                ffuWatts,
-                rcr,
-                cu,
-                numFixtures,
-                lightingWatts,
-                equipDetails,
-                equipWatts,
-                envelopeLoad
-            });
-
-            resultsHtml += `
-                <h3 class="text-lg font-semibold">Room ${index + 1}</h3>
-                <div class="text-sm">
-                    <p><span class="font-medium">Single Pass Air:</span> ${singlePass.charAt(0).toUpperCase() + singlePass.slice(1)}</p>
-                    <p><span class="font-medium">Air Handler Sizing:</span> ${cfm.toFixed(2)} CFM</p>
-                    <p><span class="font-medium">Makeup Air:</span> ${roomMakeupCfm.toFixed(2)} CFM</p>
-                    <p><span class="font-medium">Recirculating Air:</span> ${roomRecircCfm.toFixed(2)} CFM</p>
-                    <p><span class="font-medium">Number of FFUs:</span> ${ffus} (rounded up from ${(cfm / cfmPerFFU).toFixed(2)})</p>
-                    <p><span class="font-medium">FFU Heat Load:</span> ${ffuWatts} W (${(ffuWatts * 3.412).toFixed(2)} BTU/hr)</p>
-                    <p><span class="font-medium">Lighting Load:</span></p>
-                    <p class="ml-4">- Room Cavity Ratio (RCR): ${rcr.toFixed(2)}</p>
-                    <p class="ml-4">- Coefficient of Utilization (CU): ${cu.toFixed(2)}</p>
-                    <p class="ml-4">- Number of 2x4 LED Fixtures: ${numFixtures}</p>
-                    <p class="ml-4">- Total Lighting Watts: ${lightingWatts} W</p>
-                    <p><span class="font-medium">Equipment Load:</span></p>
-                    <p class="ml-4">${equipDetails || 'No equipment added'}</p>
-                    <p><span class="font-medium">Total Equipment Watts:</span> ${equipWatts} W</p>
-                    <p><span class="font-medium">Envelope Load:</span> ${envelopeLoad.toFixed(2)} BTU/hr</p>
-                </div><br>
-            `;
-        });
-
-        // Ventilation CFM for people
-        const ventilationCfm = totalPeople * 10; // 10 CFM per person for fresh air
+        // --- 4. CALCULATE TOTAL SYSTEM LOADS & SIZING ---
+        const ventilationCfm = totalPeople * 10;
         totalMakeupCfm = Math.max(totalMakeupCfm, ventilationCfm);
 
-        // Global occupant load
-        const peopleSensible = totalPeople * 250; // BTU/hr
-        const peopleLatent = totalPeople * 200; // BTU/hr
+        let envelopeLoad = totalEnvelopeLoad;
+        if (environment === 'indoor' && tempControlledSelect.value === 'yes') {
+            const spaceTemp = parseFloat(document.getElementById('space-temp').value);
+            if (outdoorTemp !== roomTemp) {
+                envelopeLoad = Math.max(0, totalEnvelopeLoad * (roomTemp - spaceTemp) / (roomTemp - outdoorTemp));
+            } else {
+                envelopeLoad = 0;
+            }
+        }
+
+        const makeupSameSurround = document.getElementById('makeup-same-surround').value === 'yes';
+        let makeupTemp, makeupW;
+        if (makeupSameSurround) {
+            makeupTemp = outdoorTemp;
+            makeupW = useWB ? outdoorW : humidityRatio(vaporPressure(outdoorRH / 100, saturationVaporPressure(fToC(outdoorTemp))));
+        } else {
+            makeupTemp = parseFloat(document.getElementById('makeup-temp').value);
+            const customMakeupRH = parseFloat(document.getElementById('makeup-rh').value);
+            if (isNaN(makeupTemp) || isNaN(customMakeupRH)) { document.getElementById('results').innerHTML = '<p class="text-red-500">Error: Please enter valid custom makeup air values.</p>'; return; }
+            makeupW = humidityRatio(vaporPressure(customMakeupRH / 100, saturationVaporPressure(fToC(makeupTemp))));
+        }
+
+        const T_mixed = (totalRecircCfm * roomTemp + totalMakeupCfm * makeupTemp) / totalCfm;
+        const W_mixed = (totalRecircCfm * room_W + totalMakeupCfm * makeupW) / totalCfm;
+        const h_mixed = (totalRecircCfm * h_room + totalMakeupCfm * enthalpy(makeupTemp, makeupW)) / totalCfm;
+
+        const peopleSensible = totalPeople * 250;
+        const peopleLatent = totalPeople * 200;
         const totalPeopleLoad = peopleSensible + peopleLatent;
+        
+        const totalRoomSensibleLoad = (totalLightingWatts + totalEquipWatts + totalFfuWatts) * 3.412 + peopleSensible + Math.max(0, envelopeLoad);   
+        const requiredSupplyTemp = roomTemp - (totalRoomSensibleLoad / (1.08 * totalCfm));
 
-        const internalHeatLoad = (totalLightingWatts + totalEquipWatts + totalFfuWatts) * 3.412 + totalPeopleLoad;
-
-        // Mixed air for coil
-        const T_mixed = (totalRecircCfm * roomTemp + totalMakeupCfm * outdoorTemp) / totalCfm;
-        const W_mixed = (totalRecircCfm * room_W + totalMakeupCfm * (useWB ? outdoorW : humidityRatio(vaporPressure(outdoorRH, saturationVaporPressure(fToC(outdoorTemp)))))) / totalCfm;
-        const h_mixed = (totalRecircCfm * h_room + totalMakeupCfm * h_outdoor) / totalCfm;
-
-        // Supply conditions for coil sizing (supply temp = roomTemp - 10°F, RH = roomRH)
-        const supplyDeltaT = 10; // Assumed cooling coil delta T
-        const supplyTemp = roomTemp - supplyDeltaT;
-        const supply_T_C = fToC(supplyTemp);
-        const supply_P_sat = saturationVaporPressure(supply_T_C);
-        const supply_P_v = vaporPressure(roomRH, supply_P_sat); // Assume same RH
-        const supply_W = humidityRatio(supply_P_v);
-        const h_supply = enthalpy(supplyTemp, supply_W);
-
-        const coilLoad = 4.5 * totalCfm * (h_mixed - h_supply); // BTU/hr
+        const dehumid_T_C = fToC(dehumidCoilTemp);
+        const dehumid_W = humidityRatio(saturationVaporPressure(dehumid_T_C));
+        const h_dehumid_supply = enthalpy(dehumidCoilTemp, dehumid_W);
+        const dehumidCoilLoad = 4.5 * totalCfm * (h_mixed - h_dehumid_supply);
+        
+        const sensibleLoad = 1.08 * totalCfm * (T_mixed - dehumidCoilTemp);
+        let latentLoad = dehumidCoilLoad - sensibleLoad;
+        let shrNote = '';
+        if (latentLoad < 0) {
+            latentLoad = 0;
+            shrNote = '(Coil is not dehumidifying)';
+        }
+        const totalCoilBtu = sensibleLoad + latentLoad;
+        const shr = totalCoilBtu > 0 ? sensibleLoad / totalCoilBtu : 0;
+        if (shr < 0.7 && latentLoad > 0) shrNote = '(Low SHR suggests high latent load; consider auxiliary dehumidification)';
 
         const fanHeat = 1.08 * totalCfm * 2;
-
-        const totalCoolingLoad = (internalHeatLoad + coilLoad + fanHeat + Math.max(totalEnvelopeLoad, 0)) * (1 + safetyFactor); // Apply safety factor
+        const totalCoolingLoad = (dehumidCoilLoad + fanHeat) * (1 + safetyFactor);
         const acTonnage = totalCoolingLoad / 12000;
 
-        // Humidification load (winter, if W_outdoor < room_W)
+        const winter_T_C = fToC(outdoorWinterTemp);
+        const winter_P_sat = saturationVaporPressure(winter_T_C);
+        const winter_W = humidityRatio(vaporPressure(0.20, winter_P_sat));
         const deltaW = Math.max(room_W - winter_W, 0);
-        const humidLoad = 0.69 * totalMakeupCfm * deltaW * 1075; // lb/ft3 air density * CFM * deltaW (lb/lb) * latent heat (BTU/lb)
-        const humidWater = (humidLoad / 970) * (1 + safetyFactor); // lb/hr water for steam humidifier
-        const humidKw = (humidLoad / 3412) * (1 + safetyFactor); // kW for electric steam humidifier
-
-        // Heater calculation (winter heating)
+        const humidLoad = 0.69 * totalMakeupCfm * deltaW * 1075;
         const heaterBtu = 1.08 * totalMakeupCfm * Math.max((roomTemp - outdoorWinterTemp), 0) + humidLoad;
         let heaterKw = (heaterBtu / 3412) * (1 + safetyFactor);
-
-        // Reheat for dehumid mode (over-cooling to 45°F for maximum moisture removal)
-        const dehumidCoilTemp = 45; // Updated coil temp for max dehumid
-        const dehumid_T_C = fToC(dehumidCoilTemp);
-        const dehumid_P_sat = saturationVaporPressure(dehumid_T_C);
-        const dehumid_P_v = dehumid_P_sat; // Assume saturated (100% RH) after coil
-        const dehumid_W = humidityRatio(dehumid_P_v);
-        const h_dehumid_supply = enthalpy(dehumidCoilTemp, dehumid_W);
-        const dehumidCoilLoad = 4.5 * totalCfm * (h_mixed - h_dehumid_supply); // BTU/hr for dehumid mode
-        const reheatBtu = 1.08 * totalCfm * (roomTemp - dehumidCoilTemp); // BTU/hr
-        const reheatKw = (reheatBtu / 3412) * (1 + safetyFactor); // kW
-
-        // Combine heater and reheat: take the maximum for the heater size
+        const reheatBtu = 1.08 * totalCfm * Math.max(0, (requiredSupplyTemp - dehumidCoilTemp));
+        const reheatKw = (reheatBtu / 3412) * (1 + safetyFactor);
         heaterKw = Math.max(heaterKw, reheatKw);
-
-        // Verify heater size for 3 tons cooling (example)
-        const exampleCoolingTons = 3;
-        const exampleCfm = (exampleCoolingTons * 12000) / (4.5 * (h_mixed - h_supply)); // Estimate CFM for 3 tons
-        const exampleReheatBtu = 1.08 * exampleCfm * (roomTemp - dehumidCoilTemp);
-        const exampleReheatKw = (exampleReheatBtu / 3412) * (1 + safetyFactor);
-        if (acTonnage >= exampleCoolingTons && heaterKw < exampleReheatKw) {
-            heaterKw = exampleReheatKw; // Ensure heater is large enough
-        }
-
-       // Power consumption (itemized)
-        const hvacKw = acTonnage * 1.2 + heaterKw + humidKw; // Cooling (1.2 kW/ton), heating, humidification
-        const ffuKw = totalFfuWatts / 1000; // FFU power
-        const lightingKw = totalLightingWatts / 1000; // Lighting power
-        const equipmentKw = totalEquipWatts / 1000; // Equipment power
+        
+        const humidWater = (humidLoad / 970) * (1 + safetyFactor);
+        const humidKw = (humidLoad / 3412) * (1 + safetyFactor);
+        
+        const hvacKw = acTonnage * 1.2 + heaterKw + humidKw;
+        const ffuKw = totalFfuWatts / 1000;
+        const lightingKw = totalLightingWatts / 1000;
+        const equipmentKw = totalEquipWatts / 1000;
         const totalDemandKw = hvacKw + ffuKw + lightingKw + equipmentKw;
-        const amps480 = totalDemandKw * 1000 / (480 * Math.sqrt(3) * 0.85); // 3-phase, 480V, PF 0.85
-        const amps208Single = totalDemandKw * 1000 / (208 * 1 * 0.85); // Single-phase, 208V, PF 0.85
-        const amps208Three = totalDemandKw * 1000 / (208 * Math.sqrt(3) * 0.85); // Three-phase, 208V, PF 0.85
+        const amps480 = totalDemandKw * 1000 / (480 * Math.sqrt(3) * 0.85);
+        const amps208Three = totalDemandKw * 1000 / (208 * Math.sqrt(3) * 0.85);
 
-        // Validation
-        const roomDewPoint = dewPoint(roomTemp, roomRH);
-        if (roomDewPoint < 40 || roomRH < 40) {
-            validationMessages.push('Low dew point or RH detected; consider desiccant wheel for dehumidification.');
+        let dehumPintsPerDay = 0, dehumAddedHeat = 0, dehumNote = '', dehumSizingExample = '';
+        if (dehumidCoilTemp < 50) {
+            const moistureLbPerHour = latentLoad / 1075;
+            dehumPintsPerDay = (moistureLbPerHour * 24) / 1.043;
+
+            const pintsPerKwh = 1.8;
+            const dehumPowerKw = (dehumPintsPerDay > 0) ? (dehumPintsPerDay / 24) / pintsPerKwh : 0;
+            const dehumHeatFromPower = dehumPowerKw * 3412;
+
+            dehumAddedHeat = latentLoad + dehumHeatFromPower;
+            dehumNote = `The required coil temperature of ${dehumidCoilTemp.toFixed(1)}°F is low, increasing the risk of coil freezing. As an alternative, a standalone dehumidifier could be used to handle the latent load.`;
+            
+            const newRoomSensibleLoad = totalRoomSensibleLoad + dehumAddedHeat;
+            const newAcTonnage = ((newRoomSensibleLoad + fanHeat) * (1 + safetyFactor)) / 12000;
+            dehumSizingExample = `If this strategy is used, the main AC unit sizing changes. The new system would require a primary AC unit of <strong>${newAcTonnage.toFixed(2)} tons</strong> (sized for sensible loads) paired with a <strong>${dehumPintsPerDay.toFixed(0)} pints/day</strong> dehumidifier.`;
         }
-        if (totalCfm > 20000) validationMessages.push('High total CFM; may require multiple air handlers.');
-        if (acTonnage > 50) validationMessages.push('High AC tonnage; may require multiple units.');
-        if (heaterKw > 50) validationMessages.push('High heater kW; verify winter or dehumidification conditions.');
-        if (humidWater > 100) validationMessages.push('High humidifier water rate; consider alternative humidification methods.');
 
-        resultsHtml += `
-            <h2 class="text-xl font-semibold">Validation</h2>
-            ${validationMessages.length > 0 ? validationMessages.map(msg => `<p class="text-sm">${msg}</p>`).join('') : '<p class="text-sm">No extreme parameters detected.</p>'}
-            <h2 class="text-xl font-semibold">Total HVAC System</h2>
-            <h3 class="text-md font-bold">Airflow</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">Total Air Handler Sizing:</span> ${totalCfm.toFixed(2)} CFM</p>
-                <p><span class="font-medium">Total Recirculating CFM:</span> ${totalRecircCfm.toFixed(2)} CFM</p>
-                <p><span class="font-medium">Total Makeup Air CFM:</span> ${totalMakeupCfm.toFixed(2)} CFM (incl. 10 CFM/person ventilation)</p>
+        // --- 5. STORE AND DISPLAY RESULTS ---
+        const tempRange = `${(roomTemp - 1).toFixed(1)} - ${(roomTemp + 1).toFixed(1)}°F`;
+        const rhRange = `${Math.max(0, roomRH * 100 - 5).toFixed(0)} - ${Math.min(100, roomRH * 100 + 5).toFixed(0)}%`;
+        
+        const isoSummary = {};
+        roomDetails.forEach(room => {
+            if (!isoSummary[room.isoClass]) isoSummary[room.isoClass] = { count: 0, totalVolume: 0 };
+            isoSummary[room.isoClass].count++;
+            isoSummary[room.isoClass].totalVolume += room.volume;
+        });
+        let narrative = `This report outlines HVAC requirements for an ${environment} facility `;
+        if (environment === 'outdoor' || (environment === 'indoor' && tempControlledSelect.value === 'no')) {
+            narrative += `located in ${locationSelect.options[locationSelect.selectedIndex].text}, `;
+        }
+        narrative += `comprising ${roomDetails.length} cleanroom${roomDetails.length > 1 ? 's' : ''}: `;
+        const summaryParts = Object.keys(isoSummary).map(isoClass => {
+            const { count, totalVolume } = isoSummary[isoClass];
+            return `${count} ISO ${isoClass} room${count > 1 ? 's' : ''} (${totalVolume.toFixed(0)} ft³)`;
+        });
+        narrative += summaryParts.join(', and ') + '.';
+
+
+        const sensibleTons = sensibleLoad / 12000;
+        const latentTons = latentLoad / 12000;
+        const totalCoilTons = totalCoilBtu / 12000;
+        latestResults = { designRequirements: { roomTemp, roomRH, totalPeople, rWall, rRoof, rFloor, ffuWattage, safetyFactor: safetyFactor * 100, environmentDetails, tempRange, rhRange, outdoorTemp, mcwb: useWB ? mcwb : null, outdoorRH: useWB ? null : outdoorRH, outdoorWinterTemp, useWB, roomDewPoint, dehumidCoilTemp, requiredSupplyTemp }, validationMessages, narrative, totalHvac: { totalCfm, totalRecircCfm, totalMakeupCfm, totalFfUs, totalFfuWatts, totalLightingWatts, totalEquipWatts, totalEnvelopeLoad: envelopeLoad, totalPeopleLoad, T_mixed, W_mixed, h_mixed, humidLoad, humidWater, humidKw, acTonnage, heaterKw, hvacKw, ffuKw, lightingKw, equipmentKw, totalDemandKw, amps480, amps208Three, sensibleLoad, latentLoad, totalCoilBtu, sensibleTons, latentTons, totalCoilTons, shr, shrNote, dehumPintsPerDay, dehumAddedHeat, dehumNote, dehumSizingExample }, roomDetails };
+        
+        const assumptionsList = [
+            `Dehumidification coil temp auto-calculated to ${dehumidCoilTemp.toFixed(1)}°F (2.5°F below room dew point).`,
+            `Required supply air temperature calculated to be ${requiredSupplyTemp.toFixed(1)}°F to meet room sensible loads.`,
+            'Fan heat gain is estimated at a 2°F temperature rise across the main supply fan.',
+            'Makeup air for non-single-pass rooms is 10% of room CFM, with a minimum of 10 CFM/person for ventilation.',
+            'Winter outdoor air is assumed to be 20% RH for humidification calculations.',
+            'Cooling power consumption is estimated at 1.2 kW per ton.',
+            'Electrical power calculations assume a power factor (PF) of 0.85.',
+            'Standard sea-level atmospheric pressure is used for all psychrometric calculations.'
+        ];
+
+        let resultsHtml = `
+            <div class="space-y-6">
+                <p class="text-lg italic text-gray-700 dark:text-gray-300">${narrative}</p>
+
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Executive Summary</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Total Airflow (CFM)</p>
+                            <p class="text-3xl font-bold">${totalCfm.toFixed(0)}</p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Final AC Sizing (Tons)</p>
+                            <p class="text-3xl font-bold">${acTonnage.toFixed(2)}</p>
+                            <p class="text-xs text-gray-500">(Includes fan heat & safety factor)</p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Heater Sizing (kW)</p>
+                            <p class="text-3xl font-bold">${heaterKw.toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">System Design Targets</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <p><span class="font-medium">Setpoint:</span> ${roomTemp}°F at ${roomRH*100}% RH</p>
+                        <p><span class="font-medium">Control Range:</span> ${tempRange} at ${rhRange}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">System Totals</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Airflow & Loads</h3>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Recirculating Air:</span> ${totalRecircCfm.toFixed(0)} CFM</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Makeup Air:</span> ${totalMakeupCfm.toFixed(0)} CFM</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Internal Heat Load:</span> ${((totalFfuWatts + totalLightingWatts + totalEquipWatts) * 3.412 + totalPeopleLoad).toFixed(0)} BTU/hr</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Adjusted Envelope Load:</span> ${envelopeLoad.toFixed(0)} BTU/hr</p>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Conditioning</h3>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Cooling:</span> ${sensibleTons.toFixed(2)} tons</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Latent Cooling:</span> ${latentTons.toFixed(2)} tons</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Heat Ratio (SHR):</span> ${shr.toFixed(2)} <span class="text-xs">${shrNote}</span></p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Humidification Load:</span> ${humidLoad.toFixed(0)} BTU/hr (${humidKw.toFixed(2)} kW)</p>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Component Sizing</h3>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Total FFUs Required:</span> ${totalFfUs}</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Calculated Coil Load:</span> ${totalCoilTons.toFixed(2)} tons</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Humidifier Water Rate:</span> ${humidWater.toFixed(2)} lb/hr</p>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Electrical</h3>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Demand Load:</span> ${totalDemandKw.toFixed(2)} kW</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Amperage @ 480V/3ph:</span> ${amps480.toFixed(1)} A</p>
+                            <p><span class="font-medium text-gray-600 dark:text-gray-400">Amperage @ 208V/3ph:</span> ${amps208Three.toFixed(1)} A</p>
+                        </div>
+                    </div>
+                </div>
+
+                ${dehumPintsPerDay > 0 ? `
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Dehumidification Strategy Note</h2>
+                    <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-4 rounded-md" role="alert">
+                        <p class="font-bold">Low Temperature Warning</p>
+                        <p>${dehumNote}</p>
+                        <div class="mt-2 pt-2 border-t border-blue-200">
+                            <p class="font-semibold">Standalone Dehumidifier Sizing:</p>
+                            <ul class="list-disc list-inside text-sm">
+                                <li>Required Capacity: <b>${dehumPintsPerDay.toFixed(0)} pints/day</b></li>
+                                <li>Estimated Heat Added to Space: <b>${dehumAddedHeat.toFixed(0)} BTU/hr</b></li>
+                            </ul>
+                            <p class="text-xs mt-2"><b>Important:</b> ${dehumSizingExample.replace(/<strong>/g, '<b>').replace(/<\/strong>/g, '</b>')}</p>
+                        </div>
+                    </div>
+                </div>` : ''}
+
+                ${validationMessages.length > 0 ? `
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Validation & Notes</h2>
+                    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md" role="alert">
+                        ${validationMessages.map(msg => `<p>${msg}</p>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Room-by-Room Breakdown</h2>
+                    <div class="space-y-2">
+                        ${roomDetails.map(room => `
+                        <details class="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                            <summary class="font-semibold cursor-pointer">Room ${room.index} Summary: ${room.cfm.toFixed(0)} CFM / ${room.ffus} FFUs</summary>
+                            <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-sm grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Dimensions (LxWxH):</span> ${room.length} x ${room.width} x ${room.height} ft</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Lighting Fixtures:</span> ${room.numFixtures} fixtures</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Makeup Air:</span> ${room.roomMakeupCfm.toFixed(0)} CFM</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">FFU Heat Load:</span> ${(room.ffuWatts * 3.412).toFixed(0)} BTU/hr</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Lighting Heat Load:</span> ${(room.lightingWatts * 3.412).toFixed(0)} BTU/hr</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Equipment Heat Load:</span> ${(room.equipWatts * 3.412).toFixed(0)} BTU/hr</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Envelope Heat Load:</span> ${room.envelopeLoad.toFixed(0)} BTU/hr</p>
+                            </div>
+                        </details>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Design Parameters & Assumptions</h2>
+                    <div class="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                        <p><b>Key Input Parameters:</b> Room Temp: ${roomTemp}°F, Room RH: ${roomRH*100}%, Environment: ${environmentDetails}, Safety Factor: ${safetyFactor*100}%</p>
+                        <ul class="list-disc list-inside">
+                            ${assumptionsList.map(item => `<li>${item}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+
+                <div>
+                    <details class="bg-gray-100 dark:bg-gray-900 border dark:border-gray-700 p-3 rounded-lg">
+                        <summary class="font-semibold text-lg cursor-pointer">Specification Sheet for Manufacturer Unit Selection</summary>
+                        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 text-sm space-y-4">
+                            <div>
+                                <h4 class="font-bold">Airflow Requirements</h4>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Supply Airflow:</span> ${totalCfm.toFixed(0)} CFM</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">External Static Pressure (ESP):</span> 1.5 "w.g. <em>(Assumed value. Must be calculated by engineer.)</em></p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold">Cooling Coil Performance</h4>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Entering Air Temp (Mixed Air):</span> ${T_mixed.toFixed(1)}°F</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Entering Air Humidity (Mixed Air):</span> ${W_mixed.toFixed(5)} lb/lb</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Leaving Air Temp:</span> ${dehumidCoilTemp.toFixed(1)}°F @ saturation</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Cooling Capacity:</span> ${(totalCoilBtu).toFixed(0)} BTU/hr</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Cooling Capacity:</span> ${sensibleLoad.toFixed(0)} BTU/hr</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Heat Ratio (SHR):</span> ${shr.toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold">Heating & Humidification</h4>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Heating Capacity:</span> ${(heaterKw * 3412).toFixed(0)} BTU/hr (${heaterKw.toFixed(2)} kW)</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Humidification Required:</span> ${humidWater.toFixed(2)} lb/hr</p>
+                            </div>
+                             <div>
+                                <h4 class="font-bold">Electrical</h4>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Suggested Service:</span> 480V / 3-Phase</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Max Electrical Load (Total System):</span> ${totalDemandKw.toFixed(2)} kW</p>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
             </div>
-            <h3 class="text-md font-bold">FFUs</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">Total Number of FFUs:</span> ${totalFfUs}</p>
-                <p><span class="font-medium">Total FFU Watts:</span> ${totalFfuWatts} W (${(totalFfuWatts * 3.412).toFixed(2)} BTU/hr)</p>
-            </div>
-            <h3 class="text-md font-bold">Loads</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">Total Lighting Watts:</span> ${totalLightingWatts} W</p>
-                <p><span class="font-medium">Total Equipment Watts:</span> ${totalEquipWatts} W</p>
-                <p><span class="font-medium">Total Envelope Load:</span> ${totalEnvelopeLoad.toFixed(2)} BTU/hr</p>
-                <p><span class="font-medium">Total Occupant Load:</span> ${totalPeople} people (${peopleSensible} sensible + ${peopleLatent} latent = ${totalPeopleLoad} BTU/hr)</p>
-            </div>
-            <h3 class="text-md font-bold">Mixed Air Conditions</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">Temperature:</span> ${T_mixed.toFixed(2)}°F</p>
-                <p><span class="font-medium">Humidity Ratio:</span> ${W_mixed.toFixed(5)} lb/lb</p>
-                <p><span class="font-medium">Enthalpy:</span> ${h_mixed.toFixed(2)} BTU/lb</p>
-            </div>
-            <h3 class="text-md font-bold">Conditioning</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">Coil Load:</span> ${coilLoad.toFixed(2)} BTU/hr</p>
-                <p><span class="font-medium">Humidifier Sizing:</span></p>
-                <p class="ml-4">- Humidification Load: ${humidLoad.toFixed(2)} BTU/hr</p>
-                <p class="ml-4">- Water Rate: ${humidWater.toFixed(2)} lb/hr</p>
-                <p class="ml-4">- Electric Power (Steam): ${humidKw.toFixed(2)} kW</p>
-            </div>
-            <h3 class="text-md font-bold">Sizing</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">AC Tonnage:</span> ${acTonnage.toFixed(2)} tons</p>
-                <p><span class="font-medium">Heater kW:</span> ${heaterKw.toFixed(2)} kW (sized for winter heating or dehumidification)</p>
-            </div>
-            <h3 class="text-md font-bold">Power Consumption</h3>
-            <div class="text-sm">
-                <p><span class="font-medium">HVAC Power (Cooling, Heating, Humidification):</span> ${hvacKw.toFixed(2)} kW</p>
-                <p><span class="font-medium">FFU Power:</span> ${ffuKw.toFixed(2)} kW</p>
-                <p><span class="font-medium">Lighting Power:</span> ${lightingKw.toFixed(2)} kW</p>
-                <p><span class="font-medium">Equipment Power:</span> ${equipmentKw.toFixed(2)} kW</p>
-                <p><span class="font-medium">Total Demand Load:</span> ${totalDemandKw.toFixed(2)} kW</p>
-                <p><span class="font-medium">Amperage at 480V (3-phase, PF 0.85):</span> ${amps480.toFixed(2)} A</p>
-                <p><span class="font-medium">Amperage at 208V (single-phase, PF 0.85):</span> ${amps208Single.toFixed(2)} A</p>
-                <p><span class="font-medium">Amperage at 208V (3-phase, PF 0.85):</span> ${amps208Three.toFixed(2)} A</p>
-            </div>
-            <small class="text-xs">
-                <h3 class="text-sm font-semibold">Assumptions Used in Calculations:</h3>
-                <ul>
-                    <li>FFU capacity: 600 CFM per unit.</li>
-                    <li>Lighting: 60 fc illuminance, 0.8 LLF, 5000 lumens/50W per LED fixture, 80% ceiling/50% wall/20% floor reflectance.</li>
-                    <li>Occupant load: 250 BTU/hr sensible, 200 BTU/hr latent per person.</li>
-                    <li>Non-single-pass makeup air: 10% of room CFM.</li>
-                    <li>Ventilation: 10 CFM per person for fresh air, added as minimum makeup.</li>
-                    <li>Coil supply: 10°F below room temp, same RH.</li>
-                    <li>Fan heat: 2°F rise across fans.</li>
-                    <li>Winter outdoor RH: 20% for non-controlled spaces.</li>
-                    <li>Humidifier: Steam-based, 970 BTU/lb water vaporization.</li>
-                    <li>Reheat for dehumidification: Assumed 45°F coil temp for maximum moisture removal with standard equipment, balancing efficiency and icing risk.</li>
-                    <li>Power: Cooling 1.2 kW/ton, power factor 0.85 for amperage.</li>
-                    <li>Atmospheric pressure: 1013.25 mbar (sea level).</li>
-                    <li>Workplane height: 2.5 ft for lighting.</li>
-                    <li>No infiltration, exfiltration, or process exhaust included.</li>
-                    <li>Safety factor applied to CFM, cooling load, humidifier, and heater calculations.</li>
-                </ul>
-            </small>
         `;
 
         document.getElementById('results').innerHTML = resultsHtml;
-
-        // Store results for PDF export
-        latestResults = {
-            designRequirements: {
-                roomTemp,
-                roomRH,
-                totalPeople,
-                rWall,
-                rRoof,
-                rFloor,
-                ffuWattage,
-                safetyFactor: safetyFactor * 100,
-                environment: environmentDetails
-            },
-            validationMessages,
-            totalHvac: {
-                totalCfm,
-                totalRecircCfm,
-                totalMakeupCfm,
-                totalFfUs,
-                totalFfuWatts,
-                totalLightingWatts,
-                totalEquipWatts,
-                totalEnvelopeLoad,
-                totalPeopleLoad,
-                T_mixed,
-                W_mixed,
-                h_mixed,
-                coilLoad,
-                humidLoad,
-                humidWater,
-                humidKw,
-                acTonnage,
-                heaterKw,
-                hvacKw,
-                ffuKw,
-                lightingKw,
-                equipmentKw,
-                totalDemandKw,
-                amps480,
-                amps208Single,
-                amps208Three
-            },
-            roomDetails
-        };
-
-        const ctx = document.getElementById('psychro-chart').getContext('2d');
-        new Chart(ctx, {
-            type: 'scatter',
-            data: {
-                datasets: [{
-                    label: 'Mixed Air',
-                    data: [{x: T_mixed, y: W_mixed * 1000}],
-                    backgroundColor: '#2563eb',
-                    pointRadius: 5
-                }, {
-                    label: 'Supply Air',
-                    data: [{x: supplyTemp, y: supply_W * 1000}],
-                    backgroundColor: '#dc2626',
-                    pointRadius: 5
-                }]
-            },
-            options: {
-                scales: {
-                    x: { title: { display: true, text: 'Dry Bulb Temp (°F)' }, min: 30, max: 100 },
-                    y: { title: { display: true, text: 'Humidity Ratio (gr/lb)' }, min: 0, max: 20 }
-                }
-            }
-        });
-
-
+        exportPdfButton.classList.remove('hidden');
+        document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
     });
 
     exportPdfButton.addEventListener('click', function() {
@@ -774,155 +692,217 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const doc = new jsPDF();
-        let y = 20;
+        const { designRequirements, totalHvac, roomDetails, validationMessages, narrative } = latestResults;
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 20;
+        let y = margin;
 
-        // Page 1: Design Requirements, Assumptions, Total HVAC System
-        doc.setFontSize(16);
+        function checkPageBreak(yPos, requiredSpace = 20) {
+            if (yPos >= pageHeight - margin - requiredSpace) {
+                doc.addPage();
+                return margin;
+            }
+            return yPos;
+        }
+
+        doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text('Cleanroom HVAC Sizing Report', 20, y);
+        doc.text('Cleanroom HVAC Sizing Report', margin, y);
+        y += 10;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, margin, y);
         y += 10;
 
-        doc.setFontSize(12);
+        doc.setFont('helvetica', 'italic');
+        const narrativeLines = doc.splitTextToSize(narrative, 170);
+        doc.text(narrativeLines, margin, y);
+        y += (narrativeLines.length * 5) + 5;
+        doc.setFont('helvetica', 'normal');
+
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('Design Requirements', 20, y);
-        y += 10;
+        doc.text('Executive Summary', margin, y); y += 8;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const { designRequirements, totalHvac, roomDetails, validationMessages } = latestResults;
-        doc.text(`Room Temperature: ${designRequirements.roomTemp}°F`, 20, y); y += 6;
-        doc.text(`Room Relative Humidity: ${designRequirements.roomRH}%`, 20, y); y += 6;
-        doc.text(`Total People: ${designRequirements.totalPeople}`, 20, y); y += 6;
-        doc.text(`Wall R-Value: ${designRequirements.rWall}`, 20, y); y += 6;
-        doc.text(`Roof R-Value: ${designRequirements.rRoof}`, 20, y); y += 6;
-        doc.text(`Floor R-Value: ${designRequirements.rFloor}`, 20, y); y += 6;
-        doc.text(`FFU Wattage: ${designRequirements.ffuWattage} W`, 20, y); y += 6;
-        doc.text(`Safety Factor: ${designRequirements.safetyFactor}%`, 20, y); y += 6;
-        doc.text(`Environment: ${designRequirements.environment}`, 20, y); y += 6;
+        doc.text(`- Total Airflow (CFM): ${totalHvac.totalCfm.toFixed(0)}`, margin, y); y += 6;
+        doc.text(`- Final AC Sizing (Tons): ${totalHvac.acTonnage.toFixed(2)} (Includes fan heat & safety factor)`, margin, y); y += 6;
+        doc.text(`- Heater Sizing (kW): ${totalHvac.heaterKw.toFixed(2)}`, margin, y); y += 10;
 
-        y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('Assumptions', 20, y); y += 10;
+        doc.text('System Design Targets', margin, y); y += 8;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const assumptions = [
-            'FFU capacity: 600 CFM per unit.',
-            'Lighting: 60 fc illuminance, 0.8 LLF, 5000 lumens/50W per LED fixture, 80% ceiling/50% wall/20% floor reflectance.',
-            'Occupant load: 250 BTU/hr sensible, 200 BTU/hr latent per person.',
-            'Non-single-pass makeup air: 10% of room CFM.',
-            'Ventilation: 10 CFM per person for fresh air, added as minimum makeup.',
-            'Coil supply: 10°F below room temp, same RH for normal cooling.',
-            'Fan heat: 2°F rise across fans.',
-            'Winter outdoor RH: 20% for non-controlled spaces.',
-            'Humidifier: Steam-based, 970 BTU/lb water vaporization.',
-            'Reheat for dehumidification: Assumed 45°F coil temp for maximum moisture removal with standard equipment, balancing efficiency and icing risk.',
-            'Power: Cooling 1.2 kW/ton, power factor 0.85 for amperage.',
-            'Atmospheric pressure: 1013.25 mbar (sea level).',
-            'Workplane height: 2.5 ft for lighting.',
-            'No infiltration, exfiltration, or process exhaust included.',
-            'Safety factor applied to CFM, cooling load, humidifier, and heater calculations.'
-        ];
-        assumptions.forEach(assumption => {
-            doc.text(`- ${assumption}`, 20, y); y += 6;
-        });
+        doc.text(`- Setpoint: ${designRequirements.roomTemp}°F at ${designRequirements.roomRH * 100}% RH`, margin, y); y += 6;
+        doc.text(`- Control Range: ${designRequirements.tempRange} at ${designRequirements.rhRange}`, margin, y); y += 10;
 
-        y += 10;
-        doc.setFontSize(12);
+        y = checkPageBreak(y);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('Total HVAC System', 20, y); y += 10;
+        doc.text('System Totals', margin, y); y += 5;
+        doc.setLineWidth(0.2);
+        doc.line(margin, y, 190, y); y += 5;
 
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Airflow & Loads', margin, y); y += 6;
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Airflow', 20, y); y += 6;
         doc.setFont('helvetica', 'normal');
-        doc.text(`Total Air Handler Sizing: ${totalHvac.totalCfm.toFixed(2)} CFM`, 20, y); y += 6;
-        doc.text(`Total Recirculating CFM: ${totalHvac.totalRecircCfm.toFixed(2)} CFM`, 20, y); y += 6;
-        doc.text(`Total Makeup Air CFM: ${totalHvac.totalMakeupCfm.toFixed(2)} CFM (incl. 10 CFM/person ventilation)`, 20, y); y += 6;
-
+        doc.text(`- Total Recirculating Air: ${totalHvac.totalRecircCfm.toFixed(0)} CFM`, margin + 2, y); y += 5;
+        doc.text(`- Total Makeup Air: ${totalHvac.totalMakeupCfm.toFixed(0)} CFM`, margin + 2, y); y += 5;
+        const totalInternalLoad = ((totalHvac.totalFfuWatts + totalHvac.totalLightingWatts + totalHvac.totalEquipWatts) * 3.412 + totalHvac.totalPeopleLoad);
+        doc.text(`- Total Internal Heat Load: ${totalInternalLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 5;
+        doc.text(`- Adjusted Envelope Load: ${totalHvac.totalEnvelopeLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 8;
+        
+        y = checkPageBreak(y);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Conditioning', margin, y); y += 6;
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('FFUs', 20, y); y += 6;
         doc.setFont('helvetica', 'normal');
-        doc.text(`Total Number of FFUs: ${totalHvac.totalFfUs}`, 20, y); y += 6;
-        doc.text(`Total FFU Watts: ${totalHvac.totalFfuWatts} W (${(totalHvac.totalFfuWatts * 3.412).toFixed(2)} BTU/hr)`, 20, y); y += 6;
+        doc.text(`- Calculated Coil Load: ${totalHvac.totalCoilTons.toFixed(2)} tons`, margin + 2, y); y += 5;
+        doc.text(`- Sensible Cooling: ${totalHvac.sensibleTons.toFixed(2)} tons`, margin + 2, y); y += 5;
+        doc.text(`- Latent Cooling: ${totalHvac.latentTons.toFixed(2)} tons`, margin + 2, y); y += 5;
+        doc.text(`- Sensible Heat Ratio (SHR): ${totalHvac.shr.toFixed(2)} ${totalHvac.shrNote}`, margin + 2, y); y += 5;
+        doc.text(`- Humidification Load: ${totalHvac.humidLoad.toFixed(0)} BTU/hr (${totalHvac.humidKw.toFixed(2)} kW)`, margin + 2, y); y += 8;
 
+        y = checkPageBreak(y);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Electrical', margin, y); y += 6;
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Loads', 20, y); y += 6;
         doc.setFont('helvetica', 'normal');
-        doc.text(`Total Lighting Watts: ${totalHvac.totalLightingWatts} W`, 20, y); y += 6;
-        doc.text(`Total Equipment Watts: ${totalHvac.totalEquipWatts} W`, 20, y); y += 6;
-        doc.text(`Total Envelope Load: ${totalHvac.totalEnvelopeLoad.toFixed(2)} BTU/hr`, 20, y); y += 6;
-        doc.text(`Total Occupant Load: ${totalHvac.totalPeopleLoad} BTU/hr`, 20, y); y += 6;
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Mixed Air Conditions', 20, y); y += 6;
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Temperature: ${totalHvac.T_mixed.toFixed(2)}°F`, 20, y); y += 6;
-        doc.text(`Humidity Ratio: ${totalHvac.W_mixed.toFixed(5)} lb/lb`, 20, y); y += 6;
-        doc.text(`Enthalpy: ${totalHvac.h_mixed.toFixed(2)} BTU/lb`, 20, y); y += 6;
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Conditioning', 20, y); y += 6;
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Coil Load: ${totalHvac.coilLoad.toFixed(2)} BTU/hr`, 20, y); y += 6;
-        doc.text(`Humidifier Sizing:`, 20, y); y += 6;
-        doc.text(`  - Humidification Load: ${totalHvac.humidLoad.toFixed(2)} BTU/hr`, 20, y); y += 6;
-        doc.text(`  - Water Rate: ${totalHvac.humidWater.toFixed(2)} lb/hr`, 20, y); y += 6;
-        doc.text(`  - Electric Power (Steam): ${totalHvac.humidKw.toFixed(2)} kW`, 20, y); y += 6;
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Sizing', 20, y); y += 6;
-        doc.setFont('helvetica', 'normal');
-        doc.text(`AC Tonnage: ${totalHvac.acTonnage.toFixed(2)} tons`, 20, y); y += 6;
-        doc.text(`Heater kW: ${totalHvac.heaterKw.toFixed(2)} kW (sized for winter heating or dehumidification)`, 20, y); y += 6;
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Power Consumption', 20, y); y += 6;
-        doc.setFont('helvetica', 'normal');
-        doc.text(`HVAC Power (Cooling, Heating, Humidification): ${totalHvac.hvacKw.toFixed(2)} kW`, 20, y); y += 6;
-        doc.text(`FFU Power: ${totalHvac.ffuKw.toFixed(2)} kW`, 20, y); y += 6;
-        doc.text(`Lighting Power: ${totalHvac.lightingKw.toFixed(2)} kW`, 20, y); y += 6;
-        doc.text(`Equipment Power: ${totalHvac.equipmentKw.toFixed(2)} kW`, 20, y); y += 6;
-        doc.text(`Total Demand Load: ${totalHvac.totalDemandKw.toFixed(2)} kW`, 20, y); y += 6;
-        doc.text(`Amperage at 480V (3-phase, PF 0.85): ${totalHvac.amps480.toFixed(2)} A`, 20, y); y += 6;
-        doc.text(`Amperage at 208V (single-phase, PF 0.85): ${totalHvac.amps208Single.toFixed(2)} A`, 20, y); y += 6;
-        doc.text(`Amperage at 208V (3-phase, PF 0.85): ${totalHvac.amps208Three.toFixed(2)} A`, 20, y); y += 6;
-
-        // Page 2: Room-by-Room Details
+        doc.text(`- Total Demand Load: ${totalHvac.totalDemandKw.toFixed(2)} kW`, margin + 2, y); y += 5;
+        doc.text(`- Amperage @ 480V/3ph: ${totalHvac.amps480.toFixed(1)} A`, margin + 2, y); y += 5;
+        doc.text(`- Amperage @ 208V/3ph: ${totalHvac.amps208Three.toFixed(1)} A`, margin + 2, y); y += 10;
+        
         doc.addPage();
-        y = 20;
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Room-by-Room Details', 20, y);
-        y += 10;
+        y = margin;
 
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Room-by-Room Breakdown', margin, y); y += 5;
+        doc.setLineWidth(0.2);
+        doc.line(margin, y, 190, y); y+= 5;
+        
         roomDetails.forEach(room => {
-            doc.setFontSize(12);
+            y = checkPageBreak(y, 45);
+            doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
-            doc.text(`Room ${room.index}`, 20, y); y += 10;
+            doc.text(`Room ${room.index}`, margin, y); y += 6;
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(`Single Pass Air: ${room.singlePass.charAt(0).toUpperCase() + room.singlePass.slice(1)}`, 20, y); y += 6;
-            doc.text(`Air Handler Sizing: ${room.cfm.toFixed(2)} CFM`, 20, y); y += 6;
-            doc.text(`Makeup Air: ${room.roomMakeupCfm.toFixed(2)} CFM`, 20, y); y += 6;
-            doc.text(`Recirculating Air: ${room.roomRecircCfm.toFixed(2)} CFM`, 20, y); y += 6;
-            doc.text(`Number of FFUs: ${room.ffus} (rounded up from ${(room.cfm / 600).toFixed(2)})`, 20, y); y += 6;
-            doc.text(`FFU Heat Load: ${room.ffuWatts} W (${(room.ffuWatts * 3.412).toFixed(2)} BTU/hr)`, 20, y); y += 6;
-            doc.text(`Lighting Load:`, 20, y); y += 6;
-            doc.text(`  - Room Cavity Ratio (RCR): ${room.rcr.toFixed(2)}`, 20, y); y += 6;
-            doc.text(`  - Coefficient of Utilization (CU): ${room.cu.toFixed(2)}`, 20, y); y += 6;
-            doc.text(`  - Number of 2x4 LED Fixtures: ${room.numFixtures}`, 20, y); y += 6;
-            doc.text(`  - Total Lighting Watts: ${room.lightingWatts} W`, 20, y); y += 6;
-            doc.text(`Equipment Load: ${room.equipDetails || 'No equipment added'}`, 20, y); y += 6;
-            doc.text(`Total Equipment Watts: ${room.equipWatts} W`, 20, y); y += 6;
-            doc.text(`Envelope Load: ${room.envelopeLoad.toFixed(2)} BTU/hr`, 20, y); y += 10;
+            doc.text(`- Dimensions (LxWxH): ${room.length} x ${room.width} x ${room.height} ft`, margin + 2, y); y += 5;
+            doc.text(`- Airflow: ${room.cfm.toFixed(0)} CFM`, margin + 2, y); y += 5;
+            doc.text(`- FFUs: ${room.ffus}`, margin + 2, y); y += 5;
+            doc.text(`- Lighting Fixtures: ${room.numFixtures}`, margin + 2, y); y += 5;
+            const roomTotalLoad = (room.ffuWatts + room.lightingWatts + room.equipWatts) * 3.412 + room.envelopeLoad;
+            doc.text(`- Total Room Load: ${roomTotalLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 8;
+        });
+        
+        doc.addPage();
+        y = margin;
+        
+        if (totalHvac.dehumPintsPerDay > 0) {
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Alternative Dehumidification Strategy', margin, y); y += 8;
+            doc.setLineWidth(0.2);
+            doc.line(margin, y - 2, 190, y - 2);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            
+            const noteLines = doc.splitTextToSize(totalHvac.dehumNote, 170);
+            doc.text(noteLines, margin, y); 
+            y += (noteLines.length * 5) + 2;
+
+            doc.text(`- Required Capacity: ${totalHvac.dehumPintsPerDay.toFixed(0)} pints/day`, margin + 2, y); y += 5;
+            doc.text(`- Estimated Heat Added to Space: ${totalHvac.dehumAddedHeat.toFixed(0)} BTU/hr`, margin + 2, y); y += 8;
+            
+            doc.setFont('helvetica', 'bold');
+            const sizingLines = doc.splitTextToSize(totalHvac.dehumSizingExample.replace(/<strong>|<\/strong>/g, ''), 170);
+            doc.text(sizingLines, margin, y); 
+            y += (sizingLines.length * 5) + 5;
+            y = checkPageBreak(y);
+        }
+
+        const assumptionsList = [
+            `Dehumidification coil temp auto-calculated to ${designRequirements.dehumidCoilTemp.toFixed(1)}°F (2.5°F below room dew point).`,
+            `Required supply air temperature calculated to be ${designRequirements.requiredSupplyTemp.toFixed(1)}°F to meet room sensible loads.`,
+            'Fan heat gain is estimated at a 2°F temperature rise across the main supply fan.',
+            'Makeup air for non-single-pass rooms is 10% of room CFM, with a minimum of 10 CFM/person for ventilation.',
+            'Winter outdoor air is assumed to be 20% RH for humidification calculations.',
+            'Cooling power consumption is estimated at 1.2 kW per ton.',
+            'Electrical power calculations assume a power factor (PF) of 0.85.',
+            'Standard sea-level atmospheric pressure is used for all psychrometric calculations.'
+        ];
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Design Parameters & Assumptions', margin, y); y += 8;
+        doc.setLineWidth(0.2);
+        doc.line(margin, y - 2, 190, y - 2);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Environment: ${designRequirements.environmentDetails}`, margin, y); y += 6;
+        assumptionsList.forEach(item => {
+            y = checkPageBreak(y, 10);
+            const splitText = doc.splitTextToSize(`- ${item}`, 170);
+            doc.text(splitText, margin, y);
+            y += (splitText.length * 4) + 2;
         });
 
-        doc.save('Cleanroom_HVAC_Report.pdf');
+        doc.addPage();
+        y = margin;
+        
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Specification Sheet for Manufacturer Unit Selection', margin, y); y += 8;
+        doc.setLineWidth(0.2);
+        doc.line(margin, y, 190, y); y += 8;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Airflow Requirements', margin, y); y += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Total Supply Airflow: ${totalHvac.totalCfm.toFixed(0)} CFM`, margin + 2, y); y += 6;
+        doc.text(`External Static Pressure (ESP): 1.5 "w.g.`, margin + 2, y); y += 5;
+        doc.setFont('helvetica', 'italic');
+        doc.text('(Assumed value. Must be calculated by design engineer.)', margin + 2, y); y += 8;
+        doc.setFont('helvetica', 'normal');
+
+        y = checkPageBreak(y);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Cooling Coil Performance', margin, y); y += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`- Entering Air Temp (Mixed Air): ${totalHvac.T_mixed.toFixed(1)}°F`, margin + 2, y); y += 5;
+        doc.text(`- Entering Air Humidity (Mixed Air): ${totalHvac.W_mixed.toFixed(5)} lb/lb`, margin + 2, y); y += 5;
+        doc.text(`- Leaving Air Temp: ${designRequirements.dehumidCoilTemp.toFixed(1)}°F @ saturation`, margin + 2, y); y += 5;
+        doc.text(`- Total Cooling Capacity: ${(totalHvac.totalCoilBtu).toFixed(0)} BTU/hr`, margin + 2, y); y += 5;
+        doc.text(`- Sensible Cooling Capacity: ${totalHvac.sensibleLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 5;
+        doc.text(`- Sensible Heat Ratio (SHR): ${totalHvac.shr.toFixed(2)}`, margin + 2, y); y += 8;
+        
+        y = checkPageBreak(y);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Heating & Humidification', margin, y); y += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`- Total Heating Capacity: ${(totalHvac.heaterKw * 3412).toFixed(0)} BTU/hr (${totalHvac.heaterKw.toFixed(2)} kW)`, margin + 2, y); y += 5;
+        doc.text(`- Humidification Required: ${totalHvac.humidWater.toFixed(2)} lb/hr`, margin + 2, y); y += 8;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Electrical', margin, y); y += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`- Suggested Service: 480V / 3-Phase`, margin + 2, y); y += 5;
+        doc.text(`- Max Electrical Load (Total System): ${totalHvac.totalDemandKw.toFixed(2)} kW`, margin + 2, y); y += 5;
+
+        doc.save('Cleanroom_HVAC_Sizing_Report.pdf');
     });
 });
