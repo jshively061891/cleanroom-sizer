@@ -282,6 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const ffuWattage = parseFloat(document.getElementById('ffu-wattage').value);
         const safetyFactor = parseFloat(document.getElementById('safety-factor').value) / 100;
         const environment = environmentSelect.value;
+        const optimizeEfficiency = document.getElementById('optimize-efficiency').value === 'yes';
         let validationMessages = [];
 
         if (isNaN(roomTemp) || isNaN(roomRH) || isNaN(totalPeople) || isNaN(rWall) || isNaN(rRoof) || isNaN(rFloor) || isNaN(ffuWattage) || isNaN(safetyFactor)) {
@@ -299,8 +300,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const roomDewPoint = dewPoint(roomTemp, roomRH);
         const dehumidCoilTemp = roomDewPoint - 2.5;
 
-        if (dehumidCoilTemp < 40 || dehumidCoilTemp > 55) {
-            validationMessages.push(`Warning: Calculated dehumidification coil temp (${dehumidCoilTemp.toFixed(1)}°F) is outside the typical safe range (40-55°F). This may risk coil freezing. Please consult an engineer.`);
+        if (dehumidCoilTemp < 40) {
+            validationMessages.push(`Warning: Calculated dehumidification coil temp (${dehumidCoilTemp.toFixed(1)}°F) is below the typical safe range of 40°F. This may risk coil freezing. Please consult an engineer or select the 'Optimize for Efficiency' option.`);
         }
         
         let outdoorTemp, outdoorRH, outdoorWinterTemp, useWB = false, outdoorW, mcwb, environmentDetails = '';
@@ -430,34 +431,58 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalRoomSensibleLoad = (totalLightingWatts + totalEquipWatts + totalFfuWatts) * 3.412 + peopleSensible + Math.max(0, envelopeLoad);   
         const requiredSupplyTemp = roomTemp - (totalRoomSensibleLoad / (1.08 * totalCfm));
 
+        const fanHeat = 1.08 * totalCfm * 2;
+        
+        let acTonnage, heaterKw, reheatBtu, dehumPintsPerDay = 0, designStrategyNote = '';
+        let sensibleLoad, latentLoad, totalCoilBtu, shr, shrNote = '';
+        
         const dehumid_T_C = fToC(dehumidCoilTemp);
         const dehumid_W = humidityRatio(saturationVaporPressure(dehumid_T_C));
         const h_dehumid_supply = enthalpy(dehumidCoilTemp, dehumid_W);
         const dehumidCoilLoad = 4.5 * totalCfm * (h_mixed - h_dehumid_supply);
         
-        const sensibleLoad = 1.08 * totalCfm * (T_mixed - dehumidCoilTemp);
-        let latentLoad = dehumidCoilLoad - sensibleLoad;
-        let shrNote = '';
-        if (latentLoad < 0) {
-            latentLoad = 0;
-            shrNote = '(Coil is not dehumidifying)';
+        sensibleLoad = 1.08 * totalCfm * (T_mixed - dehumidCoilTemp);
+        latentLoad = Math.max(0, dehumidCoilLoad - sensibleLoad);
+
+        if (optimizeEfficiency) {
+            designStrategyNote = 'Optimized Efficiency: System designed with a dedicated dehumidifier for latent loads and a primary AC unit for sensible loads.';
+            
+            const latentLoadFromPeople = peopleLatent;
+            const latentLoadFromMakeup = 4.5 * totalMakeupCfm * (enthalpy(makeupTemp, makeupW) - enthalpy(makeupTemp, room_W));
+            const trueLatentLoad = latentLoadFromPeople + Math.max(0, latentLoadFromMakeup);
+
+            const moistureLbPerHour = trueLatentLoad / 1075;
+            dehumPintsPerDay = (moistureLbPerHour * 24) / 1.043;
+            
+            const pintsPerKwh = 1.8;
+            const dehumPowerKw = (dehumPintsPerDay > 0) ? (dehumPintsPerDay / 24) / pintsPerKwh : 0;
+            const dehumHeatFromPower = dehumPowerKw * 3412;
+            const dehumAddedHeat = trueLatentLoad + dehumHeatFromPower;
+
+            const makeupAirSensibleLoad = 1.08 * totalMakeupCfm * Math.max(0, (makeupTemp - roomTemp));
+            const newTotalSensibleLoad = totalRoomSensibleLoad + dehumAddedHeat + makeupAirSensibleLoad;
+            acTonnage = ((newTotalSensibleLoad + fanHeat) * (1 + safetyFactor)) / 12000;
+            
+            reheatBtu = 0;
+        } else {
+            designStrategyNote = 'Standard Design: System designed with a single AC unit using overcooling and reheat to manage both temperature and humidity.';
+            
+            const totalCoolingLoad = (dehumidCoilLoad + fanHeat) * (1 + safetyFactor);
+            acTonnage = totalCoolingLoad / 12000;
+            reheatBtu = 1.08 * totalCfm * Math.max(0, (requiredSupplyTemp - dehumidCoilTemp));
         }
-        const totalCoilBtu = sensibleLoad + latentLoad;
-        const shr = totalCoilBtu > 0 ? sensibleLoad / totalCoilBtu : 0;
-        if (shr < 0.7 && latentLoad > 0) shrNote = '(Low SHR suggests high latent load; consider auxiliary dehumidification)';
 
-        const fanHeat = 1.08 * totalCfm * 2;
-        const totalCoolingLoad = (dehumidCoilLoad + fanHeat) * (1 + safetyFactor);
-        const acTonnage = totalCoolingLoad / 12000;
-
+        totalCoilBtu = sensibleLoad + latentLoad;
+        shr = totalCoilBtu > 0 ? sensibleLoad / totalCoilBtu : 0;
+        if (shr < 0.7 && latentLoad > 0) shrNote = '(Low SHR suggests high latent load)';
+        
         const winter_T_C = fToC(outdoorWinterTemp);
         const winter_P_sat = saturationVaporPressure(winter_T_C);
         const winter_W = humidityRatio(vaporPressure(0.20, winter_P_sat));
         const deltaW = Math.max(room_W - winter_W, 0);
         const humidLoad = 0.69 * totalMakeupCfm * deltaW * 1075;
         const heaterBtu = 1.08 * totalMakeupCfm * Math.max((roomTemp - outdoorWinterTemp), 0) + humidLoad;
-        let heaterKw = (heaterBtu / 3412) * (1 + safetyFactor);
-        const reheatBtu = 1.08 * totalCfm * Math.max(0, (requiredSupplyTemp - dehumidCoilTemp));
+        heaterKw = (heaterBtu / 3412) * (1 + safetyFactor);
         const reheatKw = (reheatBtu / 3412) * (1 + safetyFactor);
         heaterKw = Math.max(heaterKw, reheatKw);
         
@@ -471,23 +496,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalDemandKw = hvacKw + ffuKw + lightingKw + equipmentKw;
         const amps480 = totalDemandKw * 1000 / (480 * Math.sqrt(3) * 0.85);
         const amps208Three = totalDemandKw * 1000 / (208 * Math.sqrt(3) * 0.85);
-
-        let dehumPintsPerDay = 0, dehumAddedHeat = 0, dehumNote = '', dehumSizingExample = '';
-        if (dehumidCoilTemp < 50) {
-            const moistureLbPerHour = latentLoad / 1075;
-            dehumPintsPerDay = (moistureLbPerHour * 24) / 1.043;
-
-            const pintsPerKwh = 1.8;
-            const dehumPowerKw = (dehumPintsPerDay > 0) ? (dehumPintsPerDay / 24) / pintsPerKwh : 0;
-            const dehumHeatFromPower = dehumPowerKw * 3412;
-
-            dehumAddedHeat = latentLoad + dehumHeatFromPower;
-            dehumNote = `The required coil temperature of ${dehumidCoilTemp.toFixed(1)}°F is low, increasing the risk of coil freezing. As an alternative, a standalone dehumidifier could be used to handle the latent load.`;
-            
-            const newRoomSensibleLoad = totalRoomSensibleLoad + dehumAddedHeat;
-            const newAcTonnage = ((newRoomSensibleLoad + fanHeat) * (1 + safetyFactor)) / 12000;
-            dehumSizingExample = `If this strategy is used, the main AC unit sizing changes. The new system would require a primary AC unit of <strong>${newAcTonnage.toFixed(2)} tons</strong> (sized for sensible loads) paired with a <strong>${dehumPintsPerDay.toFixed(0)} pints/day</strong> dehumidifier.`;
-        }
 
         // --- 5. STORE AND DISPLAY RESULTS ---
         const tempRange = `${(roomTemp - 1).toFixed(1)} - ${(roomTemp + 1).toFixed(1)}°F`;
@@ -510,11 +518,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         narrative += summaryParts.join(', and ') + '.';
 
+        const specSheetLat = optimizeEfficiency ? requiredSupplyTemp : dehumidCoilTemp;
 
         const sensibleTons = sensibleLoad / 12000;
         const latentTons = latentLoad / 12000;
         const totalCoilTons = totalCoilBtu / 12000;
-        latestResults = { designRequirements: { roomTemp, roomRH, totalPeople, rWall, rRoof, rFloor, ffuWattage, safetyFactor: safetyFactor * 100, environmentDetails, tempRange, rhRange, outdoorTemp, mcwb: useWB ? mcwb : null, outdoorRH: useWB ? null : outdoorRH, outdoorWinterTemp, useWB, roomDewPoint, dehumidCoilTemp, requiredSupplyTemp }, validationMessages, narrative, totalHvac: { totalCfm, totalRecircCfm, totalMakeupCfm, totalFfUs, totalFfuWatts, totalLightingWatts, totalEquipWatts, totalEnvelopeLoad: envelopeLoad, totalPeopleLoad, T_mixed, W_mixed, h_mixed, humidLoad, humidWater, humidKw, acTonnage, heaterKw, hvacKw, ffuKw, lightingKw, equipmentKw, totalDemandKw, amps480, amps208Three, sensibleLoad, latentLoad, totalCoilBtu, sensibleTons, latentTons, totalCoilTons, shr, shrNote, dehumPintsPerDay, dehumAddedHeat, dehumNote, dehumSizingExample }, roomDetails };
+        latestResults = { designRequirements: { roomTemp, roomRH, totalPeople, rWall, rRoof, rFloor, ffuWattage, safetyFactor: safetyFactor * 100, environmentDetails, tempRange, rhRange, outdoorTemp, mcwb: useWB ? mcwb : null, outdoorRH: useWB ? null : outdoorRH, outdoorWinterTemp, useWB, roomDewPoint, dehumidCoilTemp, requiredSupplyTemp, specSheetLat, optimizeEfficiency }, validationMessages, narrative, designStrategyNote, totalHvac: { totalCfm, totalRecircCfm, totalMakeupCfm, totalFfUs, totalFfuWatts, totalLightingWatts, totalEquipWatts, totalEnvelopeLoad: envelopeLoad, totalPeopleLoad, T_mixed, W_mixed, h_mixed, humidLoad, humidWater, humidKw, acTonnage, heaterKw, hvacKw, ffuKw, lightingKw, equipmentKw, totalDemandKw, amps480, amps208Three, sensibleLoad, latentLoad, totalCoilBtu, sensibleTons, latentTons, totalCoilTons, shr, shrNote, dehumPintsPerDay }, roomDetails };
         
         const assumptionsList = [
             `Dehumidification coil temp auto-calculated to ${dehumidCoilTemp.toFixed(1)}°F (2.5°F below room dew point).`,
@@ -541,11 +550,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
                             <p class="text-sm text-gray-600 dark:text-gray-400">Final AC Sizing (Tons)</p>
                             <p class="text-3xl font-bold">${acTonnage.toFixed(2)}</p>
-                            <p class="text-xs text-gray-500">(Includes fan heat & safety factor)</p>
+                            ${optimizeEfficiency ? `<p class="text-xs text-gray-500">(Sensible Load Only)</p>` : `<p class="text-xs text-gray-500">(Includes Latent Load, Fan Heat & Safety Factor)</p>`}
                         </div>
                         <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Heater Sizing (kW)</p>
-                            <p class="text-3xl font-bold">${heaterKw.toFixed(2)}</p>
+                           ${optimizeEfficiency && dehumPintsPerDay > 0 ? `<p class="text-sm text-gray-600 dark:text-gray-400">Dehumidifier Sizing</p><p class="text-3xl font-bold">${dehumPintsPerDay.toFixed(0)} PPD</p>` : `<p class="text-sm text-gray-600 dark:text-gray-400">Heater Sizing (kW)</p><p class="text-3xl font-bold">${heaterKw.toFixed(2)}</p>`}
                         </div>
                     </div>
                 </div>
@@ -556,6 +564,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p><span class="font-medium">Setpoint:</span> ${roomTemp}°F at ${roomRH*100}% RH</p>
                         <p><span class="font-medium">Control Range:</span> ${tempRange} at ${rhRange}</p>
                     </div>
+                     <p class="text-xs mt-2"><span class="font-medium">Design Strategy:</span> ${designStrategyNote}</p>
                 </div>
 
                 <div>
@@ -589,23 +598,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                 </div>
-
-                ${dehumPintsPerDay > 0 ? `
-                <div>
-                    <h2 class="text-2xl font-bold border-b pb-2 mb-4">Dehumidification Strategy Note</h2>
-                    <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-4 rounded-md" role="alert">
-                        <p class="font-bold">Low Temperature Warning</p>
-                        <p>${dehumNote}</p>
-                        <div class="mt-2 pt-2 border-t border-blue-200">
-                            <p class="font-semibold">Standalone Dehumidifier Sizing:</p>
-                            <ul class="list-disc list-inside text-sm">
-                                <li>Required Capacity: <b>${dehumPintsPerDay.toFixed(0)} pints/day</b></li>
-                                <li>Estimated Heat Added to Space: <b>${dehumAddedHeat.toFixed(0)} BTU/hr</b></li>
-                            </ul>
-                            <p class="text-xs mt-2"><b>Important:</b> ${dehumSizingExample.replace(/<strong>/g, '<b>').replace(/<\/strong>/g, '</b>')}</p>
-                        </div>
-                    </div>
-                </div>` : ''}
 
                 ${validationMessages.length > 0 ? `
                 <div>
@@ -658,10 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <h4 class="font-bold">Cooling Coil Performance</h4>
                                 <p><span class="font-medium text-gray-600 dark:text-gray-400">Entering Air Temp (Mixed Air):</span> ${T_mixed.toFixed(1)}°F</p>
                                 <p><span class="font-medium text-gray-600 dark:text-gray-400">Entering Air Humidity (Mixed Air):</span> ${W_mixed.toFixed(5)} lb/lb</p>
-                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Leaving Air Temp:</span> ${dehumidCoilTemp.toFixed(1)}°F @ saturation</p>
-                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Total Cooling Capacity:</span> ${(totalCoilBtu).toFixed(0)} BTU/hr</p>
-                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Cooling Capacity:</span> ${sensibleLoad.toFixed(0)} BTU/hr</p>
-                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Sensible Heat Ratio (SHR):</span> ${shr.toFixed(2)}</p>
+                                <p><span class="font-medium text-gray-600 dark:text-gray-400">Leaving Air Temp:</span> ${specSheetLat.toFixed(1)}°F ${optimizeEfficiency ? '' : '@ saturation'}</p>
                             </div>
                             <div>
                                 <h4 class="font-bold">Heating & Humidification</h4>
@@ -692,7 +681,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const doc = new jsPDF();
-        const { designRequirements, totalHvac, roomDetails, validationMessages, narrative } = latestResults;
+        const { designRequirements, totalHvac, roomDetails, validationMessages, narrative, designStrategyNote } = latestResults;
         const pageHeight = doc.internal.pageSize.height;
         const margin = 20;
         let y = margin;
@@ -726,16 +715,24 @@ document.addEventListener('DOMContentLoaded', function() {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text(`- Total Airflow (CFM): ${totalHvac.totalCfm.toFixed(0)}`, margin, y); y += 6;
-        doc.text(`- Final AC Sizing (Tons): ${totalHvac.acTonnage.toFixed(2)} (Includes fan heat & safety factor)`, margin, y); y += 6;
-        doc.text(`- Heater Sizing (kW): ${totalHvac.heaterKw.toFixed(2)}`, margin, y); y += 10;
-
+        doc.text(`- Final AC Sizing (Tons): ${totalHvac.acTonnage.toFixed(2)}`, margin, y); y += 6;
+        if (totalHvac.dehumPintsPerDay > 0 && designRequirements.optimizeEfficiency) {
+            doc.text(`- Dehumidifier Sizing: ${totalHvac.dehumPintsPerDay.toFixed(0)} PPD`, margin, y); y += 6;
+        } else {
+            doc.text(`- Heater Sizing (kW): ${totalHvac.heaterKw.toFixed(2)}`, margin, y); y += 6;
+        }
+        y += 4;
+        
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text('System Design Targets', margin, y); y += 8;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text(`- Setpoint: ${designRequirements.roomTemp}°F at ${designRequirements.roomRH * 100}% RH`, margin, y); y += 6;
-        doc.text(`- Control Range: ${designRequirements.tempRange} at ${designRequirements.rhRange}`, margin, y); y += 10;
+        doc.text(`- Control Range: ${designRequirements.tempRange} at ${designRequirements.rhRange}`, margin, y); y += 6;
+        doc.setFont('helvetica', 'italic');
+        doc.text(`- Design Strategy: ${designStrategyNote}`, margin, y); y += 10;
+        doc.setFont('helvetica', 'normal');
 
         y = checkPageBreak(y);
         doc.setFontSize(14);
@@ -801,32 +798,24 @@ document.addEventListener('DOMContentLoaded', function() {
             doc.text(`- Total Room Load: ${roomTotalLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 8;
         });
         
-        doc.addPage();
-        y = margin;
-        
-        if (totalHvac.dehumPintsPerDay > 0) {
+        if (totalHvac.dehumPintsPerDay > 0 && designRequirements.optimizeEfficiency) {
+            doc.addPage();
+            y = margin;
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            doc.text('Alternative Dehumidification Strategy', margin, y); y += 8;
+            doc.text('Optimized Dehumidification Strategy', margin, y); y += 8;
             doc.setLineWidth(0.2);
             doc.line(margin, y - 2, 190, y - 2);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
             
-            const noteLines = doc.splitTextToSize(totalHvac.dehumNote, 170);
-            doc.text(noteLines, margin, y); 
-            y += (noteLines.length * 5) + 2;
-
-            doc.text(`- Required Capacity: ${totalHvac.dehumPintsPerDay.toFixed(0)} pints/day`, margin + 2, y); y += 5;
+            doc.text(`- Required Dehumidifier Capacity: ${totalHvac.dehumPintsPerDay.toFixed(0)} pints/day`, margin + 2, y); y += 5;
             doc.text(`- Estimated Heat Added to Space: ${totalHvac.dehumAddedHeat.toFixed(0)} BTU/hr`, margin + 2, y); y += 8;
-            
-            doc.setFont('helvetica', 'bold');
-            const sizingLines = doc.splitTextToSize(totalHvac.dehumSizingExample.replace(/<strong>|<\/strong>/g, ''), 170);
-            doc.text(sizingLines, margin, y); 
-            y += (sizingLines.length * 5) + 5;
-            y = checkPageBreak(y);
         }
 
+        doc.addPage();
+        y = margin;
+        
         const assumptionsList = [
             `Dehumidification coil temp auto-calculated to ${designRequirements.dehumidCoilTemp.toFixed(1)}°F (2.5°F below room dew point).`,
             `Required supply air temperature calculated to be ${designRequirements.requiredSupplyTemp.toFixed(1)}°F to meet room sensible loads.`,
@@ -881,7 +870,7 @@ document.addEventListener('DOMContentLoaded', function() {
         doc.setFont('helvetica', 'normal');
         doc.text(`- Entering Air Temp (Mixed Air): ${totalHvac.T_mixed.toFixed(1)}°F`, margin + 2, y); y += 5;
         doc.text(`- Entering Air Humidity (Mixed Air): ${totalHvac.W_mixed.toFixed(5)} lb/lb`, margin + 2, y); y += 5;
-        doc.text(`- Leaving Air Temp: ${designRequirements.dehumidCoilTemp.toFixed(1)}°F @ saturation`, margin + 2, y); y += 5;
+        doc.text(`- Leaving Air Temp: ${designRequirements.specSheetLat.toFixed(1)}°F ${designRequirements.optimizeEfficiency ? '' : '@ saturation'}`, margin + 2, y); y += 5;
         doc.text(`- Total Cooling Capacity: ${(totalHvac.totalCoilBtu).toFixed(0)} BTU/hr`, margin + 2, y); y += 5;
         doc.text(`- Sensible Cooling Capacity: ${totalHvac.sensibleLoad.toFixed(0)} BTU/hr`, margin + 2, y); y += 5;
         doc.text(`- Sensible Heat Ratio (SHR): ${totalHvac.shr.toFixed(2)}`, margin + 2, y); y += 8;
